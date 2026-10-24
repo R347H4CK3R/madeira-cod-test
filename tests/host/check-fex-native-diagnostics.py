@@ -151,6 +151,46 @@ template<class... Args> void EFmt(const char* format, Args... args) {
 '''
 
 
+def snapshot_code(source):
+    start = source.index('/* iOS-Madeira ml622: mirror of rpmalloc')
+    declarations = source[start:source.index('#include <condition_variable>', start)]
+    start = source.index('      /* iOS-Madeira ml622: drain the rpmalloc')
+    end = source.index('\n    }\n  }\n\n  /* iOS-Madeira 2026-05-14', start)
+    return declarations, source[start:end]
+
+
+def snapshot_program(source, apple):
+    declarations, report = snapshot_code(source)
+    prelude = '''#include <cassert>
+#include <iostream>
+static unsigned reports;
+namespace LogMan::Msg {
+template<class... Args> void EFmt(const char* format, Args... args) {
+    ++reports;
+    std::cout << format; ((std::cout << '|' << args), ...); std::cout << '\\n';
+}
+}
+'''
+    if apple:
+        # Define after standard headers: only the extracted production guard
+        # changes, not the host compiler's standard-library platform choice.
+        prelude += '#define __APPLE__ 1\n'
+    body = prelude + declarations + '\nstatic void report() {\n' + report + '\n}\n'
+    if apple:
+        return body + 'int main() { report(); assert(reports == 0); }\n'
+    return body + '''extern "C" int rpm_cas_snapshot_take(rpm_cas_snapshot* out) {
+    static unsigned calls;
+    if (calls++ != 0) return 0;
+    *out = {};
+    out->which_loop = 2; out->page_addr = 0x1234;
+    out->block_count = 16; out->block_index = 3;
+    out->fail_changed = 5; out->fail_unchanged = 7;
+    return 1;
+}
+int main() { report(); report(); assert(reports == 1); }
+'''
+
+
 def main():
     source = subprocess.check_output(['git', '-C', str(ROOT / 'FEX'), 'show', 'HEAD:' + SOURCE], text=True)
     arm64_source = subprocess.check_output(['git', '-C', str(ROOT / 'FEX'), 'show', 'HEAD:' + ARM64_SOURCE], text=True)
@@ -164,6 +204,10 @@ def main():
         assert result.returncode != 0, 'unpatched native CASPAL diagnostic unexpectedly compiled'
         assert 'MEMORY_BASIC_INFORMATION' in result.stderr, result.stderr
         print('RED: pinned native CASPAL diagnostic reproduces Windows-only type failure')
+        result, _ = compile_program(directory, 'unpatched-apple-snapshot', snapshot_program(source, True))
+        assert result.returncode != 0, 'unpatched Apple snapshot unexpectedly linked'
+        assert 'rpm_cas_snapshot_take' in result.stderr, result.stderr
+        print('RED: pinned Apple snapshot diagnostic reproduces missing allocator symbol')
         assert PATCH.is_file(), f'missing native diagnostic patch: {PATCH}'
         original = directory / SOURCE
         original.parent.mkdir(parents=True)
@@ -193,6 +237,18 @@ def main():
             print('GREEN: ' + name)
         assert windows_outputs[0] == windows_outputs[1], 'Windows query/report behavior changed'
         print('GREEN: Windows reports preserved; CASPAL atomic/opcode code untouched')
+        snapshot_outputs = []
+        for name, text in [('unpatched-allocator-snapshot', snapshot_program(source, False)),
+                           ('patched-apple-snapshot', snapshot_program(patched, True)),
+                           ('patched-allocator-snapshot', snapshot_program(patched, False))]:
+            result, executable = compile_program(directory, name, text)
+            assert result.returncode == 0, result.stderr
+            output = subprocess.check_output([str(executable)], text=True)
+            if 'allocator' in name:
+                snapshot_outputs.append(output)
+            print('GREEN: ' + name)
+        assert snapshot_outputs[0] == snapshot_outputs[1], 'Enabled allocator snapshot reporting changed'
+        print('GREEN: Apple links without rpmalloc; enabled allocator reports preserved')
 
 
 if __name__ == '__main__':
