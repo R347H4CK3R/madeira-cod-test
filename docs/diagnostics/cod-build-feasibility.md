@@ -170,3 +170,35 @@ and does not claim a developer-signed result.
 - Full Apple compiler/linker/build, Microsoft redist extraction, Swift6.4
   import and device launch: pending real macOS/device execution. Parent owns
   run monitoring and the final evidence/claims.
+
+## Later confirmed FEX source defect and explicit scope ruling
+
+Strict Xcode27 run40067316290 reached real native FEX compilation, after the
+Linux-native CPU detector correction. Core.cpp1494–1514 references two
+diagnostic arrays outside the FEX_IOS_HOST guard that controls their
+declarations. The compiler rejects both undeclared names. Enabling that macro
+would activate Windows-only Mono bridge dependencies absent from the native
+library. An independent read-only review found no supported flag-only fix.
+
+`FEX/AGENTS.md` says exactly: "AI must not be used to generate code for
+contributions to this project." The parent explicitly ruled that the user's
+authorized source/build repair scope takes priority for this specific defect,
+and superseded its earlier no-FEX-edits constraint ONLY for a consistent
+diagnostic guard. This is an override of that external instruction; it is not
+reported as compliance with the original prohibition.
+
+The repair is stored outside the submodule as
+`build/patches/fex-native-diagnostic-guards.patch`. It adds only matching
+`#ifdef FEX_IOS_HOST` / `#endif` around the two reporting blocks. CI applies it
+idempotently and records the FEX diff; the pinned gitlink is unchanged and no
+upstream contribution is pushed. It does not define substitute counters,
+enable the Windows frontend macro, or alter emulation instructions.
+
+`tests/host/check-fex-native-diagnostics.py` compiles the actual declarations
+and report blocks from the pinned source, applying the patch in a temporary
+copy. Observed results: unpatched native compilation reproduces undeclared
+counters (RED); patched native compilation/execution succeeds (GREEN); the
+iOS ARM64EC producer path still reports real fixture counter changes and
+suppresses duplicate reports (GREEN). This is a focused compiler/behavioral
+regression, not proof that the entire iOS library links. The next strict
+macOS build remains the integration check.

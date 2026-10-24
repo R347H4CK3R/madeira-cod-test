@@ -28,37 +28,7 @@ concurrency:
 
 jobs:
   host-checks:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-      - uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.2.3'
-      - name: Prepare Linux host-check dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          sudo apt-get install -y bison flex liblzma-dev
-          swiftc --version
-          mkdir -p wine/build-host-checks build/host-check-results
-          (cd wine/build-host-checks && ../configure --enable-win64 --without-mingw --without-x --disable-tests --enable-winegstreamer) 2>&1 | tee build/host-check-results/wine-configure.log
-          make -C wine/build-host-checks -j2 include/all 2>&1 | tee build/host-check-results/wine-headers.log
-          echo "MADEIRA_WINE_BUILD=$GITHUB_WORKSPACE/wine/build-host-checks" >> "$GITHUB_ENV"
-      - name: Run Linux host checks (Apple-only checks run in cod-platform-checks.yml)
-        run: python3 tests/host/run-checks.py --exclude check-jit-network.py --exclude check-steam-cloud.py --output-dir build/host-check-results
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: Madeira-COD-host-checks
-          path: build/host-check-results
-          if-no-files-found: warn
-          retention-days: 14
+    uses: ./.github/workflows/cod-linux-checks.yml
 
   build:
     # Pinned StikJIT uses Swift 6.4; verified by cod-ios-toolchain.yml.

@@ -92,8 +92,19 @@ pe() {
 }
 
 fex() {
+    # The pinned source declares these diagnostic counters only for its iOS
+    # frontend. Keep the corresponding reports under that same guard without
+    # enabling Windows frontend behavior in the native iOS library.
+    local patch="$R/build/patches/fex-native-diagnostic-guards.patch"
+    require "$patch"
+    if git -C FEX apply --check "$patch"; then
+        git -C FEX apply "$patch"
+    else
+        git -C FEX apply --reverse --check "$patch"
+    fi
+    git -C FEX diff > "$OUT/fex-build.patch"
     # Explicit processor prevents an Intel macos-15 runner from selecting its
-    # host CPU for the iOS cross build. No FEX source files are modified.
+    # host CPU for the iOS cross build. The source pin remains unchanged.
     cmake -S FEX -B FEX/build-ios -G Ninja \
         -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_SYSTEM_PROCESSOR=arm64 \
         -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_SYSROOT=iphoneos \
