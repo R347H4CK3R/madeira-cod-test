@@ -9,6 +9,14 @@ BUILD_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$BUILD_DIR/../.." && pwd)"
 DXMT_SRC="$REPO_ROOT/dxmt/src"
 DXMT_ROOT="$REPO_ROOT/dxmt"
+DXMT_PATCH="$REPO_ROOT/build/patches/dxmt-metal-public-atomic.patch"
+if git -C "$DXMT_ROOT" apply --check "$DXMT_PATCH"; then
+    git -C "$DXMT_ROOT" apply "$DXMT_PATCH"
+else
+    git -C "$DXMT_ROOT" apply --reverse --check "$DXMT_PATCH"
+fi
+mkdir -p "$REPO_ROOT/build/ci-output"
+git -C "$DXMT_ROOT" diff > "$REPO_ROOT/build/ci-output/dxmt-build.patch"
 LLVM_SRC="$REPO_ROOT/toolchains/llvm-project/llvm"
 LLVM_BUILD="$REPO_ROOT/toolchains/llvm-ios-build"
 SDK=$(xcrun --sdk iphoneos --show-sdk-path)
