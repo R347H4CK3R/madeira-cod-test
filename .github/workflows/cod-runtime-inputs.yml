@@ -20,12 +20,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      RUNTIME_INPUT_WORK: ${{ runner.temp }}/madeira-runtime-inputs
       RUNTIME_INPUT_RESULTS: build/runtime-input-results
     steps:
       - uses: actions/checkout@v4
       - name: Install and verify 7-Zip
         run: |
+          export RUNTIME_INPUT_WORK="$RUNNER_TEMP/madeira-runtime-inputs"
+          printf 'RUNTIME_INPUT_WORK=%s\n' "$RUNTIME_INPUT_WORK" >> "$GITHUB_ENV"
           mkdir -p "$RUNTIME_INPUT_WORK" "$RUNTIME_INPUT_RESULTS"
           sudo apt-get update 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-update.log"
           sudo apt-get install -y --no-install-recommends 7zip curl ca-certificates 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-install.log"
