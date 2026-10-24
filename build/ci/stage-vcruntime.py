@@ -14,6 +14,7 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import xml.etree.ElementTree as ET
 
 NAMES = set('''concrt140.dll msvcp140.dll msvcp140_1.dll msvcp140_2.dll
 msvcp140_atomic_wait.dll msvcp140_codecvt_ids.dll vcamp140.dll vccorlib140.dll
@@ -135,6 +136,64 @@ def original_name(data):
         return None
 
 
+def candidate_metadata(data):
+    """Report PE metadata for diagnosis; this does not authenticate the signer."""
+    result = {'original_filename': original_name(data)}
+    try:
+        pe = struct.unpack_from('<I', data, 0x3c)[0]
+        result['machine'] = hex(struct.unpack_from('<H', data, pe + 4)[0])
+        fixed = data.find(bytes.fromhex('bd04effe'))
+        if fixed >= 0:
+            ms, ls = struct.unpack_from('<II', data, fixed + 8)
+            result['file_version'] = '.'.join(str(v) for v in (ms >> 16, ms & 65535, ls >> 16, ls & 65535))
+        optional = pe + 24
+        if struct.unpack_from('<H', data, optional)[0] != 0x20b:
+            return result
+        sections = struct.unpack_from('<H', data, pe + 6)[0]
+        table = optional + struct.unpack_from('<H', data, pe + 20)[0]
+
+        def rva_offset(rva, size):
+            for index in range(sections):
+                section = table + index * 40
+                address, raw_size, raw_offset = struct.unpack_from('<III', data, section + 12)
+                delta = rva - address
+                if 0 <= delta and size <= raw_size - delta and raw_offset + delta + size <= len(data):
+                    return raw_offset + delta
+            return None
+
+        rva, size = struct.unpack_from('<II', data, optional + 112 + 10 * 8)
+        config = rva_offset(rva, min(size, 208)) if rva else None
+        if config is not None:
+            declared = struct.unpack_from('<I', data, config)[0]
+            result['load_config_size'] = declared
+            if min(size, declared) >= 208:
+                pointer = struct.unpack_from('<Q', data, config + 200)[0]
+                result['chpe_metadata_pointer'] = hex(pointer)
+                image_base = struct.unpack_from('<Q', data, optional + 24)[0]
+                metadata = rva_offset(pointer - image_base, 4) if pointer else None
+                if metadata is not None:
+                    result['chpe_metadata_version'] = struct.unpack_from('<I', data, metadata)[0]
+    except struct.error:
+        result['metadata_truncated'] = True
+    return result
+
+
+def log_burn_manifest(root):
+    for path in sorted((root / 'ux').rglob('*')):
+        if not path.is_file() or path.stat().st_size > 2 * 1024 * 1024:
+            continue
+        try:
+            manifest = ET.fromstring(path.read_bytes())
+        except ET.ParseError:
+            continue
+        if manifest.tag.rsplit('}', 1)[-1] != 'BurnManifest':
+            continue
+        for element in manifest.iter():
+            tag = element.tag.rsplit('}', 1)[-1]
+            if tag in ('Payload', 'MsiPackage'):
+                print('Burn manifest: ' + json.dumps({'tag': tag, **element.attrib}, sort_keys=True), flush=True)
+
+
 def validate_folder(destination):
     result = {}
     for path in destination.iterdir() if destination.is_dir() else []:
@@ -158,6 +217,9 @@ def extract(installer, destination):
         root = Path(folder)
 
         def unpack(path, target):
+            print('Unpack payload: ' + json.dumps({'path': str(path.relative_to(root)),
+                  'sha256': hashlib.sha256(path.read_bytes()).hexdigest(),
+                  'target': str(target.relative_to(root))}, sort_keys=True), flush=True)
             subprocess.run([executable, 'x', '-y', str(path.resolve()), '-o'+str(target)], check=True)
 
         data = installer.read_bytes()
@@ -169,6 +231,7 @@ def extract(installer, destination):
             path.write_bytes(data[start:start + container['size']])
             seen.add(container['sha256'])
             unpack(path, root / container['name'])
+        log_burn_manifest(root)
         for _ in range(6):
             containers = []
             for path in root.rglob('*'):
@@ -188,24 +251,31 @@ def extract(installer, destination):
                 unpack(path, target)
 
         candidates = {}
-        for path in root.rglob('*'):
+        conflicts = set()
+        for path in sorted(root.rglob('*')):
             if not path.is_file():
                 continue
             with path.open('rb') as file:
                 if file.read(2) != b'MZ':
                     continue
             data = path.read_bytes()
-            if not signed_x64(data):
-                continue
             name = path.name.lower()
             if name not in NAMES:
                 name = original_name(data)
             if name not in NAMES:
                 continue
             digest = hashlib.sha256(data).hexdigest()
+            eligible = signed_x64(data)
+            print('Runtime candidate: ' + json.dumps({'name': name, 'path': str(path.relative_to(root)),
+                  'sha256': digest, 'size': len(data), 'signed_x64': eligible,
+                  **candidate_metadata(data)}, sort_keys=True), flush=True)
+            if not eligible:
+                continue
             if name in candidates and candidates[name][0] != digest:
-                raise ValueError(f'Redist contains different signed binaries named {name}; select the intended version explicitly')
+                conflicts.add(name)
             candidates[name] = digest, path
+        if conflicts:
+            raise ValueError(f'Redist contains different signed binaries named {", ".join(sorted(conflicts))}; select the intended version explicitly')
         for name, (_, path) in candidates.items():
             shutil.copyfile(path, destination/name)
     return validate_folder(destination)
