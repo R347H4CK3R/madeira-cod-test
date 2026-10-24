@@ -1,0 +1,43 @@
+name: Madeira macOS host checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/cod-1938090-ipa-*']
+    paths:
+      - '.github/workflows/cod-platform-checks.yml'
+      - 'app/Madeira/JITNetwork.swift'
+      - 'app/Madeira/SteamCloud.swift'
+      - 'tests/host/check-jit-network.py'
+      - 'tests/host/check-steam-cloud.py'
+
+permissions:
+  contents: read
+
+jobs:
+  apple-host-checks:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - name: Verify Apple host compiler
+        run: |
+          mkdir -p build/platform-host-results
+          xcrun swiftc --version | tee build/platform-host-results/swift-version.txt
+      - name: Exercise production JIT loopback networking
+        run: python3 -u tests/host/check-jit-network.py 2>&1 | tee build/platform-host-results/check-jit-network.log
+      - name: Exercise production Steam Cloud comparison and plans
+        if: always()
+        run: |
+          mkdir -p build/platform-host-results
+          python3 -u tests/host/check-steam-cloud.py 2>&1 | tee build/platform-host-results/check-steam-cloud.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-macOS-host-checks
+          path: build/platform-host-results
+          if-no-files-found: error
+          retention-days: 14
