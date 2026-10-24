@@ -1,4 +1,4 @@
-name: Madeira COD Debug test IPA
+name: Madeira COD Test IPA
 
 on:
   workflow_dispatch:
