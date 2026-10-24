@@ -1,6 +1,6 @@
 # COD HQ test IPA progress — 2026-10-24
 
-Status: MACOS BUILD IN PROGRESS in R347H4CK3R/madeira-cod-test. No new IPA has been built or validated yet. COD startup remains untested in a new build.
+Status: STRICT XCODE 27 BUILD IN PROGRESS in R347H4CK3R/madeira-cod-test. No new IPA has been built or validated yet. COD startup remains untested in a new build.
 
 ## Source and preservation
 
@@ -66,3 +66,18 @@ The macOS job passed recursive checkout and began Xcode/build preparation. The U
 ## Next steps
 
 Finish build recipe and review; run macOS CI; inspect failures and retest; match original IPA's ucrtbase and ntdll against log; implement a regression-tested dispatch correction only if confirmed; validate/package/download real output. Update this record with actual commits, runs, test totals, signing state and hashes.
+
+## Corrected toolchain build and test inventory
+
+The first native run40064483490 was canceled after checkpointing when a separate compiler probe established StikJIT incompatibility on macOS15's latest Xcode26.3/Swift6.2.4. Its actual logs also exposed errors hidden by the initial tee pipelines: FEX ran Linux-only native CPU probes; LLVM attempted an unneeded libLTO dylib with ELF linker flags; DXMT lacked generated AIR headers. Actual Wine native archives, rebuilt patched ntdll, and Rust pairing did build; FEX did not. Earlier green step markers were insufficient proof. Details: diagnostics/cod-native-build-first-run.md.
+
+The corrected full build is run40067316290 at source8af4d2771cb8ff3a14d6bbe22806d4567544f906:
+https://github.com/R347H4CK3R/madeira-cod-test/actions/runs/40067316290
+
+It uses official xcode-27, strict Bash failure propagation, generic FEX compilation without editing FEX, static-only LLVM configuration, and source-generated DXMT AIR headers. Old partial LLVM cache is not reused. Media/crypto/fonts completed under the new toolchain; remaining native stages and packaging are pending.
+
+The actual helper/compiler probe40066625182 passed with Xcode27.2RC(27B48), Swift6.4.2, SDK27.2(24B113), all tracked StikJIT hashes unchanged. See diagnostics/cod-xcode27-compatibility.md.
+
+Prepared local Linux validation runs48/48 applicable checks successfully, with2 explicit Apple-only exclusions recorded in the inventory. Those2 scripts independently passed on strict macOS run40065715371 (22JIT and27Cloud checks). A separate verbose Steam-download interruption diagnostic timed out300s; later complete suite passed, so the intermittent timeout is retained as unresolved. Latest full CI's Linux job failed before running tests because setup-swift@v2 rejected the available vendor version6.2.3; a direct checksum-pinned vendor install is being prepared in an independent test workflow. No host success is claimed for that failed CI setup.
+
+No connected iPhone USB interface was detected. Device launch/gameplay remains untested; no new IPA or download/hash exists yet. No original game assets, signing credentials, or pairing secrets were copied.
