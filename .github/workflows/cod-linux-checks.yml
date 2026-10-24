@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   workflow_call:
   push:
-    branches: ['fix/cod-1938090-ipa-*']
+    branches: ['fix/cod-1938090-ipa-*', 'fix/linux-swift641-20261024']
     paths:
       - '.github/workflows/cod-linux-checks.yml'
 
@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      MADEIRA_SWIFT_URL: https://download.swift.org/swift-6.2.3-release/ubuntu2404/swift-6.2.3-RELEASE/swift-6.2.3-RELEASE-ubuntu24.04.tar.gz
-      MADEIRA_SWIFT_SHA256: 3e0b8eaf9210131a1756e6a1a9e9103bac83609a0ae604d6f2e791053f98f115
+      MADEIRA_SWIFT_URL: https://download.swift.org/swift-6.4.1-release/ubuntu2404/swift-6.4.1-RELEASE/swift-6.4.1-RELEASE-ubuntu24.04.tar.gz
+      MADEIRA_SWIFT_SHA256: 7d246c7114077ad01dba4ad897628446ada4c489d6c7dbcf39ae3f25cbe17e8b
       PYTHON_CPU_COUNT: '2'
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
@@ -45,14 +45,14 @@ jobs:
       - uses: actions/cache/restore@v4
         id: swift-cache
         with:
-          path: ${{ runner.temp }}/madeira-swift623
+          path: ${{ runner.temp }}/madeira-swift641
           key: madeira-swift-ubuntu2404-${{ runner.os }}-${{ runner.arch }}-${{ env.MADEIRA_SWIFT_SHA256 }}
-      - name: Install verified official Swift 6.2.3 archive
+      - name: Install verified official Swift 6.4.1 archive
         if: steps.swift-cache.outputs.cache-hit != 'true'
         run: |
           set -euo pipefail
-          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift623"
-          madeira_swift_archive="$RUNNER_TEMP/madeira-swift623.tar.gz"
+          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift641"
+          madeira_swift_archive="$RUNNER_TEMP/madeira-swift641.tar.gz"
           {
             curl --fail --location --retry 3 --output "$madeira_swift_archive" "$MADEIRA_SWIFT_URL"
             printf '%s  %s\n' "$MADEIRA_SWIFT_SHA256" "$madeira_swift_archive" | sha256sum --check --strict
@@ -62,13 +62,13 @@ jobs:
       - name: Verify Swift version and Foundation
         run: |
           set -euo pipefail
-          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift623"
+          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift641"
           printf '%s\n' "$madeira_swift_prefix/usr/bin" >> "$GITHUB_PATH"
           "$madeira_swift_prefix/usr/bin/swiftc" --version 2>&1 | tee build/host-check-results/swift-version.log
           python3 - <<'PYCODE'
           from pathlib import Path
           version = Path('build/host-check-results/swift-version.log').read_text()
-          assert 'Swift version 6.2.3 (' in version, version
+          assert 'Swift version 6.4.1 (' in version, version
           PYCODE
           cat > "$RUNNER_TEMP/madeira-swift-foundation.swift" <<'SWIFT'
           import Foundation
@@ -88,7 +88,7 @@ jobs:
       - uses: actions/cache/save@v4
         if: steps.swift-cache.outputs.cache-hit != 'true'
         with:
-          path: ${{ runner.temp }}/madeira-swift623
+          path: ${{ runner.temp }}/madeira-swift641
           key: ${{ steps.swift-cache.outputs.cache-primary-key }}
       - name: Prepare Linux host-check dependencies
         run: |
