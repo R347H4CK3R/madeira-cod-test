@@ -11,3 +11,7 @@ https://github.com/R347H4CK3R/madeira-cod-test
 Verified repository ID: 1431827019; fork=false. This is not a second GitHub fork and is not a public binary release. Original fork/main and previous builds remain untouched.
 
 The full tested source history was pushed on fix/cod-1938090-ipa-20261024 at 3b7a7617be280ce3a4dece1704e6c4a48c16ca92, preserving upstream authorship, license texts, pinned submodules and diagnostic patches. Native compilation and device tests remain required. Actions execution eligibility is being checked independently; an enabled repository setting alone does not establish execution eligibility.
+
+An owner-authenticated Contents API workflow-name update created commit7c4771a512f83c46b09434df7c37c836dc3085df, after which workflow394835476 registered and push run40064483490 started. Prior cloud pushes alone had not produced registration; this observation does not establish the reason for that difference or for the original repository's422 denial.
+
+Actual run: https://github.com/R347H4CK3R/madeira-cod-test/actions/runs/40064483490

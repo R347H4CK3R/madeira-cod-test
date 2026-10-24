@@ -1,6 +1,6 @@
 # COD HQ test IPA progress — 2026-10-24
 
-Status: BLOCKED BY GITHUB ACTIONS SERVICE REJECTION. No new IPA has been built or validated. COD startup remains untested in a new build.
+Status: MACOS BUILD IN PROGRESS in R347H4CK3R/madeira-cod-test. No new IPA has been built or validated yet. COD startup remains untested in a new build.
 
 ## Source and preservation
 
@@ -53,6 +53,15 @@ Baseline: 28/48 host check scripts exit 0 and 20 exit 1. Seventeen fail because 
 Supported Actions enable operations both returned HTTP204, but dispatch still returns HTTP422: "Actions has been disabled for this repository." Repository setting enabled=true, workflow active, branch/source readable and token repo/workflow scopes verified. No run exists. This is not a compilation failure. Exact account/service reason remains hidden; no billing cause has been established. Full evidence and GitHub request IDs: diagnostics/cod-actions-rejection.md.
 
 Final local suite: 30/50 check scripts exit0, 20 baseline failures remain (17 Swift absent, Python compression.zstd absent, configured Wine headers absent, swap-coverage expectation mismatch). Pairing Rust tests5/5 pass. New tests: bootstrap4/4 and IPA validator23/23. Shell syntax, converter source hashes and diff checks pass. These do not validate native iOS compilation or device behavior. Machine-readable results: diagnostics/cod-host-results.json.
+
+## Active build in the independent source copy
+
+The user requested a new fork. GitHub returned the existing fork instead of creating a second same-account fork. The separate, explicitly labeled source repository https://github.com/R347H4CK3R/madeira-cod-test was created without modifying the old fork/main. It preserves the tested source history and pinned submodules; GitHub reports fork=false.
+
+An owner-authenticated workflow update at 7c4771a512f83c46b09434df7c37c836dc3085df registered workflow394835476 and triggered real run40064483490:
+https://github.com/R347H4CK3R/madeira-cod-test/actions/runs/40064483490
+
+The macOS job passed recursive checkout and began Xcode/build preparation. The Ubuntu host-check job passed checkout/Python setup and began the full suite. No duplicate manual dispatch was sent. The original repository's execution rejection is unchanged; the new successful run shows that this account can execute Actions, but does not explain the old repository's hidden service state. Further build/compiler results and artifacts remain pending.
 
 ## Next steps
 
