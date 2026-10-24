@@ -107,16 +107,58 @@ def burn_containers(data):
 
 
 def signed_x64(data):
+    """Require pure AMD64 and an intact certificate payload, not signer trust.
+
+    ARM64EC/ARM64X DLLs can report Machine=AMD64. Their nonzero load-config
+    CHPEMetadataPointer distinguishes them from the x64 guest input required
+    here. The official SDK's IMAGE_LOAD_CONFIG_DIRECTORY64 places that VA at
+    byte 200 (field ends at 208):
+    https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/um/winnt.h
+    """
     try:
         pe = struct.unpack_from('<I', data, 0x3c)[0]
-        if data[:2] != b'MZ' or data[pe:pe+4] != b'PE\0\0':
+        if data[:2] != b'MZ' or pe < 64 or data[pe:pe+4] != b'PE\0\0':
             return False
         if struct.unpack_from('<H', data, pe+4)[0] != 0x8664:
             return False
-        if struct.unpack_from('<H', data, pe+24)[0] != 0x20b:
+        optional = pe + 24
+        optional_size = struct.unpack_from('<H', data, pe + 20)[0]
+        if optional_size < 112 or optional + optional_size > len(data):
             return False
-        off, size = struct.unpack_from('<II', data, pe+24+112+4*8)
-        return size >= 8 and off > 0 and off+size <= len(data)
+        if struct.unpack_from('<H', data, optional)[0] != 0x20b:
+            return False
+        count = struct.unpack_from('<I', data, optional + 108)[0]
+        if not 5 <= count <= 16 or optional_size < 112 + count * 8:
+            return False
+        off, size = struct.unpack_from('<II', data, optional + 112 + 4 * 8)
+        if size < 8 or off <= 0 or off + size > len(data):
+            return False
+        if count <= 10:
+            return True
+        rva, size = struct.unpack_from('<II', data, optional + 112 + 10 * 8)
+        if not rva and not size:
+            return True
+        if not rva or size < 4:
+            return False
+        sections = struct.unpack_from('<H', data, pe + 6)[0]
+        table = optional + optional_size
+        if table + sections * 40 > len(data):
+            return False
+        config = None
+        for index in range(sections):
+            section = table + index * 40
+            address, raw_size, raw_offset = struct.unpack_from('<III', data, section + 12)
+            delta = rva - address
+            if 0 <= delta and size <= raw_size - delta and raw_offset + delta + size <= len(data):
+                if config is not None:  # Overlapping sections are ambiguous.
+                    return False
+                config = raw_offset + delta
+        if config is None:
+            return False
+        declared = struct.unpack_from('<I', data, config)[0]
+        if not 4 <= declared <= size:
+            return False
+        return declared < 208 or struct.unpack_from('<Q', data, config + 200)[0] == 0
     except struct.error:
         return False
 

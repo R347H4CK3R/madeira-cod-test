@@ -35,15 +35,26 @@ def cabinet(files):
     return header + folder + table + block
 
 
-def runtime_pe(name, marker=0, machine=0x8664, certificate=True):
-    data = bytearray(0x400)
+def runtime_pe(name, marker=0, machine=0x8664, certificate=True, hybrid=False):
+    data = bytearray(0x700)
     data[:2] = b'MZ'
     struct.pack_into('<I', data, 0x3c, 0x80)
     data[0x80:0x84] = b'PE\0\0'
     struct.pack_into('<H', data, 0x84, machine)
+    struct.pack_into('<H', data, 0x86, 1)
+    struct.pack_into('<H', data, 0x94, 0xf0)
     struct.pack_into('<H', data, 0x98, 0x20b)
+    struct.pack_into('<Q', data, 0x98 + 24, 0x180000000)
+    struct.pack_into('<I', data, 0x98 + 108, 16)
     if certificate:
-        struct.pack_into('<II', data, 0x98 + 112 + 4 * 8, 0x3f0, 16)
+        struct.pack_into('<II', data, 0x98 + 112 + 4 * 8, 0x6f0, 16)
+    struct.pack_into('<II', data, 0x98 + 112 + 10 * 8, 0x1200, 320)
+    struct.pack_into('<8sIIIIIIHHI', data, 0x188, b'.rdata', 0x400, 0x1000, 0x400, 0x200, 0, 0, 0, 0, 0)
+    struct.pack_into('<I', data, 0x400, 320)
+    if hybrid:
+        # Microsoft ARM64EC/ARM64X may retain the AMD64 machine code.
+        struct.pack_into('<Q', data, 0x400 + 200, 0x180001380)
+        struct.pack_into('<I', data, 0x580, 2)
     key = 'OriginalFilename\0'.encode('utf-16le')
     data[0x200:0x200 + len(key)] = key
     start = (0x200 + len(key) + 3) & ~3
@@ -167,11 +178,66 @@ class Extraction(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'different signed binaries named msvcp140.dll'):
             self.extract(data)
 
+    def test_selects_pure_x64_core_when_hybrid_dll_reports_amd64_machine(self):
+        originals = {name: runtime_pe(name) for name in runtime.CORE}
+        files = {f'fil{i}': data for i, data in enumerate(originals.values())}
+        files['arm64_payload'] = runtime_pe('vcruntime140_1.dll', marker=2, hybrid=True)
+        data, _ = bundle(cabinet({'a0': cabinet(files)}))
+        destination, report = self.extract(data)
+        self.assertEqual(set(report), runtime.CORE)
+        for name, original in originals.items():
+            self.assertEqual((destination / name).read_bytes(), original)
+
+    def test_hybrid_only_core_does_not_satisfy_x64_inputs(self):
+        files = {f'fil{i}': runtime_pe(name, hybrid=True) for i, name in enumerate(runtime.CORE)}
+        data, _ = bundle(cabinet({'a0': cabinet(files)}))
+        with self.assertRaisesRegex(ValueError, 'Missing Microsoft x64 runtime inputs'):
+            self.extract(data)
+
 
 class RuntimeValidation(unittest.TestCase):
     def test_rejects_wrong_machine_or_missing_certificate_payload(self):
         self.assertFalse(runtime.signed_x64(runtime_pe('msvcp140.dll', machine=0xaa64)))
         self.assertFalse(runtime.signed_x64(runtime_pe('msvcp140.dll', certificate=False)))
+
+    def test_rejects_hybrid_amd64_machine(self):
+        self.assertTrue(runtime.signed_x64(runtime_pe('vcruntime140_1.dll')))
+        self.assertFalse(runtime.signed_x64(runtime_pe('vcruntime140_1.dll', hybrid=True)))
+        invalid_pointer = bytearray(runtime_pe('vcruntime140_1.dll', hybrid=True))
+        struct.pack_into('<Q', invalid_pointer, 0x400 + 200, 0xffffffffffffffff)
+        self.assertFalse(runtime.signed_x64(invalid_pointer))
+
+    def test_accepts_consistent_absent_or_older_load_config(self):
+        data = bytearray(runtime_pe('msvcp140.dll'))
+        directory = 0x98 + 112 + 10 * 8
+        struct.pack_into('<II', data, directory, 0, 0)
+        self.assertTrue(runtime.signed_x64(data))
+        data = bytearray(runtime_pe('msvcp140.dll'))
+        struct.pack_into('<I', data, directory + 4, 192)
+        struct.pack_into('<I', data, 0x400, 192)
+        self.assertTrue(runtime.signed_x64(data))
+
+    def test_malformed_load_config_cannot_masquerade_as_pure_x64(self):
+        original = runtime_pe('msvcp140.dll')
+        directory = 0x98 + 112 + 10 * 8
+        for offset, value in ((directory, 0), (directory, 0x9999),
+                              (directory + 4, 207), (0x400, 321),
+                              (directory + 4, 0x1000)):
+            with self.subTest(offset=offset, value=value):
+                data = bytearray(original)
+                struct.pack_into('<I', data, offset, value)
+                self.assertFalse(runtime.signed_x64(data))
+
+    def test_validation_rejects_hybrid_folder_without_rewriting_bytes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            destination = Path(folder)
+            originals = {name: runtime_pe(name, hybrid=name == 'vcruntime140_1.dll') for name in runtime.CORE}
+            for name, data in originals.items():
+                (destination / name).write_bytes(data)
+            with self.assertRaisesRegex(ValueError, 'Not an intact signed x64'):
+                runtime.validate_folder(destination)
+            for name, data in originals.items():
+                self.assertEqual((destination / name).read_bytes(), data)
 
 
 if __name__ == '__main__':
