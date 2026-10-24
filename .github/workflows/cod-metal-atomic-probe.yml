@@ -1,0 +1,57 @@
+name: Madeira Metal atomic compiler probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/metal-atomic-*']
+    paths:
+      - '.github/workflows/cod-metal-atomic-probe.yml'
+      - 'build/ci/probe-metal-atomic.sh'
+      - 'build/patches/dxmt-metal-public-atomic.patch'
+      - 'build/dxmt-ios/build.sh'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  metal:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Initialize only pinned DXMT source
+        run: |
+          git submodule update --init --depth 1 dxmt
+          mkdir -p build/metal-atomic-probe
+      - name: Select latest installed Xcode
+        run: |
+          python3 - <<'PY'
+          import glob, os, re, subprocess
+          candidates = []
+          for app in glob.glob('/Applications/Xcode*.app'):
+              developer = app + '/Contents/Developer'
+              result = subprocess.run(['/usr/bin/xcodebuild', '-version'], env={**os.environ, 'DEVELOPER_DIR': developer}, text=True, capture_output=True)
+              match = re.search(r'Xcode (\d+(?:\.\d+)*)', result.stdout)
+              if result.returncode == 0 and match:
+                  candidates.append((tuple(map(int, match.group(1).split('.'))), developer))
+          if not candidates:
+              raise SystemExit('No usable Xcode installed')
+          _, developer = max(candidates)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('DEVELOPER_DIR=' + developer + '\n')
+          PY
+      - name: Reproduce and repair actual Metal shader compilation
+        run: bash build/ci/probe-metal-atomic.sh 2>&1 | tee build/metal-atomic-probe/probe.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-Metal-atomic-compiler-evidence
+          path: build/metal-atomic-probe
+          if-no-files-found: error
+          retention-days: 14
