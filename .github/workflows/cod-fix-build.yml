@@ -18,13 +18,17 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 concurrency:
   group: madeira-cod-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   host-checks:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -32,8 +36,22 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
-      - name: Run every host check
-        run: python3 tests/host/run-checks.py --output-dir build/host-check-results
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: '6.2.3'
+      - name: Prepare Linux host-check dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y bison flex liblzma-dev
+          swiftc --version
+          mkdir -p wine/build-host-checks build/host-check-results
+          (cd wine/build-host-checks && ../configure --enable-win64 --without-mingw --without-x --disable-tests --enable-winegstreamer) 2>&1 | tee build/host-check-results/wine-configure.log
+          make -C wine/build-host-checks -j2 include/all 2>&1 | tee build/host-check-results/wine-headers.log
+          echo "MADEIRA_WINE_BUILD=$GITHUB_WORKSPACE/wine/build-host-checks" >> "$GITHUB_ENV"
+      - name: Run Linux host checks (Apple-only checks run in cod-platform-checks.yml)
+        run: python3 tests/host/run-checks.py --exclude check-jit-network.py --exclude check-steam-cloud.py --output-dir build/host-check-results
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -43,7 +61,9 @@ jobs:
           retention-days: 14
 
   build:
-    runs-on: macos-15
+    # Pinned StikJIT uses Swift 6.4; verified by cod-ios-toolchain.yml.
+    # Official runner documentation: actions/runner-images#14404.
+    runs-on: xcode-27
     timeout-minutes: 360
     env:
       HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -199,12 +219,24 @@ jobs:
             build/ci-output/*.txt
             build/ci-output/*.json
             build/ci-output/*.patch
-            build/ci-output/*.xcresult
+            build/gnutls-ios/obj/*.log
+            build/ffmpeg/obj/**/*.log
+            build/freetype-ios/build/**/*.log
+            FEX/build-ios/CMakeFiles/CMakeConfigureLog.yaml
+            toolchains/llvm-host-build/CMakeFiles/CMakeConfigureLog.yaml
+            toolchains/llvm-ios-build/CMakeFiles/CMakeConfigureLog.yaml
             build/ntdll-unix/obj/*.err
             build/wineserver/obj/**/err-*.txt
             build/win32u-unix/obj/*.err
             build/dxmt-ios/obj/*.err
             wine/build-macos/config.log
             wine/build-arm64ec/config.log
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-COD-Xcode-result
+          path: build/ci-output/*.xcresult
           if-no-files-found: warn
           retention-days: 14

@@ -101,6 +101,7 @@ fex() {
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DBUILD_FEXCONFIG=OFF \
         -DBUILD_FEX_LINUX_TESTS=OFF -DENABLE_FEX_ALLOCATOR=OFF \
         -DENABLE_ASSERTIONS=OFF -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON \
+        -DTUNE_ARCH=generic -DTUNE_CPU=none \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     cmake --build FEX/build-ios --target FEXCore FEXCore_Base JemallocLibs
     require FEX/build-ios/FEXCore/Source/libFEXCore.a FEX/build-ios/FEXCore/Source/libFEXCore_Base.a \
@@ -126,7 +127,8 @@ llvm() {
     git -C toolchains/llvm-project rev-parse HEAD > "$OUT/llvm-revision.txt"
     cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-host-build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD= -DLLVM_INCLUDE_TESTS=OFF \
-        -DLLVM_ENABLE_PROJECTS= -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF
+        -DLLVM_INCLUDE_TOOLS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
+        -DLLVM_ENABLE_PROJECTS= -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_TERMINFO=OFF
     cmake --build toolchains/llvm-host-build --target llvm-tblgen
     # LLVM 15 treats iOS as ELF here; Apple ld needs -dead_strip.
     python3 - <<'PY'
@@ -142,7 +144,8 @@ PY
         -DCMAKE_BUILD_TYPE=Release -DLLVM_HOST_TRIPLE=arm64-apple-ios17.0 \
         -DLLVM_DEFAULT_TARGET_TRIPLE=arm64-apple-ios17.0 -DLLVM_TARGET_ARCH=host \
         -DLLVM_TARGETS_TO_BUILD= -DLLVM_ENABLE_PROJECTS= -DLLVM_BUILD_TOOLS=OFF \
-        -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF \
+        -DLLVM_INCLUDE_TOOLS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF \
+        -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_ENABLE_ZLIB=OFF -DLLVM_ENABLE_ZSTD=OFF -DLLVM_ENABLE_TERMINFO=OFF \
         -DLLVM_TABLEGEN="$R/toolchains/llvm-host-build/bin/llvm-tblgen" \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     cmake --build toolchains/llvm-ios-build

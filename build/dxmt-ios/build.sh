@@ -165,6 +165,20 @@ compile_objc "$DXMT_SRC/winemetal/unix/winemetal_unix.c" winemetal_unix
 compile_objc "$DXMT_SRC/winemetal/unix/cache.c"          cache
 
 echo "=== airconv (C++ 20, needs LLVM headers) ==="
+# Match src/airconv/meson.build: these three shaders are embedded as AIR
+# bitcode in airconv_context.cpp, not as metallib containers. A clean checkout
+# has no generated headers; compile the real pinned Metal sources before C++.
+mkdir -p "$BUILD_DIR/shader-headers"
+for shader in air_msad air_samplepos air_tessellation; do
+    src="$DXMT_SRC/airconv/shaders/$shader.metal"
+    air="$BUILD_DIR/shader-headers/$shader.air"
+    header="$BUILD_DIR/shader-headers/$shader.h"
+    if [ ! -f "$header" ] || [ "$src" -nt "$header" ] || [ "$0" -nt "$header" ]; then
+        xcrun -sdk macosx metal -std=metal3.1 --target=air64-apple-macos14.0 \
+            -o "$air" -c "$src"
+        xxd -n "$shader" -i "$air" "$header"
+    fi
+done
 for cpp in airconv_context.cpp air_type.cpp air_signature.cpp air_operations.cpp \
            dxbc_converter.cpp dxbc_converter_gs.cpp dxbc_converter_ts.cpp \
            dxbc_converter_basicblock.cpp dxbc_converter_cfg.cpp \

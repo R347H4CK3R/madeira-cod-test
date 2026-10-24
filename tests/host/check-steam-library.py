@@ -1058,7 +1058,7 @@ try:
                            ['-Xlinker', '-lcrypto', '-Xlinker', '-llzma', '-Xlinker', '-lz'], capture_output=True, text=True)
     require(build.returncode == 0, 'the production Steam library, download and decoder code compile on the host')
     if build.returncode:
-        sys.stdout.write(build.stderr[-6000:])
+        sys.stdout.write(build.stderr)
         print(f'check-steam-library: {failures} FAILED')
         sys.exit(1)
 

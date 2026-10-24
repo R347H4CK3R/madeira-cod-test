@@ -441,7 +441,7 @@ int main( int argc, char **argv )
     close( fd );
     setenv( "MADEIRA_SWAP_FILE", path, 1 );
     setenv( "MADEIRA_SWAP_MB", "256", 1 );
-    unsetenv( "MADEIRA_SWAP_COVERAGE" );
+    setenv( "MADEIRA_SWAP_COVERAGE", "blocks", 1 );
     ios_swap_init();
     unlink( path );
     if (ios_swap_fd < 0) { printf( "FAIL: tier did not start\n" ); return 1; }
