@@ -1,0 +1,124 @@
+name: Madeira official VC runtime input check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/cod-1938090-ipa-*']
+    paths:
+      - '.github/workflows/cod-runtime-inputs.yml'
+      - 'build/ci/stage-vcruntime.py'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  microsoft-runtime-inputs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUNTIME_INPUT_WORK: ${{ runner.temp }}/madeira-runtime-inputs
+      RUNTIME_INPUT_RESULTS: build/runtime-input-results
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install and verify 7-Zip
+        run: |
+          mkdir -p "$RUNTIME_INPUT_WORK" "$RUNTIME_INPUT_RESULTS"
+          sudo apt-get update 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-update.log"
+          sudo apt-get install -y --no-install-recommends 7zip curl ca-certificates 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-install.log"
+          command -v 7zz
+          7zz i 2>&1 | tee "$RUNTIME_INPUT_RESULTS/7zip-version.log"
+      - name: Download the official Microsoft x64 redistributable
+        run: |
+          curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --show-error \
+            --retry 3 --retry-delay 3 \
+            --output "$RUNTIME_INPUT_WORK/vc_redist.x64.exe" \
+            --write-out 'http_code=%{http_code}\nsize_download=%{size_download}\n' \
+            https://aka.ms/vs/17/release/vc_redist.x64.exe 2>&1 | tee "$RUNTIME_INPUT_RESULTS/download.log"
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          installer = Path(os.environ['RUNTIME_INPUT_WORK']) / 'vc_redist.x64.exe'
+          data = installer.read_bytes()
+          result = {
+              'filename': installer.name,
+              'source_url': 'https://aka.ms/vs/17/release/vc_redist.x64.exe',
+              'size_bytes': len(data),
+              'sha256': hashlib.sha256(data).hexdigest(),
+          }
+          output = Path(os.environ['RUNTIME_INPUT_RESULTS'])
+          (output / 'installer.json').write_text(json.dumps(result, indent=2) + '\n')
+          (output / 'installer.sha256').write_text(result['sha256'] + '  ' + installer.name + '\n')
+          print(json.dumps(result, indent=2))
+          PY
+      - name: Exercise the production runtime extractor
+        run: |
+          python3 -u build/ci/stage-vcruntime.py "$RUNTIME_INPUT_WORK/runtime" \
+            --installer "$RUNTIME_INPUT_WORK/vc_redist.x64.exe" \
+            --report "$RUNTIME_INPUT_RESULTS/runtime-extraction.json" \
+            2>&1 | tee "$RUNTIME_INPUT_RESULTS/extraction.log"
+      - name: Validate the extracted runtime folder with the production helper
+        if: always()
+        run: |
+          mkdir -p "$RUNTIME_INPUT_RESULTS"
+          python3 -u build/ci/stage-vcruntime.py "$RUNTIME_INPUT_WORK/runtime" \
+            --report "$RUNTIME_INPUT_RESULTS/runtime-validation.json" \
+            2>&1 | tee "$RUNTIME_INPUT_RESULTS/validation.log"
+      - name: Record actual runtime PE inputs
+        if: always()
+        run: |
+          mkdir -p "$RUNTIME_INPUT_RESULTS"
+          python3 - <<'PY' | tee "$RUNTIME_INPUT_RESULTS/inventory.log"
+          import hashlib, importlib.util, json, os, struct
+          from pathlib import Path
+          spec = importlib.util.spec_from_file_location('stage_vcruntime', 'build/ci/stage-vcruntime.py')
+          helper = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(helper)
+          runtime = Path(os.environ['RUNTIME_INPUT_WORK']) / 'runtime'
+          files = []
+          for path in sorted(runtime.iterdir()) if runtime.is_dir() else []:
+              if not path.is_file():
+                  continue
+              data = path.read_bytes()
+              item = {'filename': path.name, 'size_bytes': len(data),
+                      'sha256': hashlib.sha256(data).hexdigest(),
+                      'pe_machine': None, 'architecture': None,
+                      'certificate_payload_present': False}
+              try:
+                  pe = struct.unpack_from('<I', data, 0x3c)[0]
+                  if data[:2] == b'MZ' and data[pe:pe + 4] == b'PE\0\0':
+                      machine = struct.unpack_from('<H', data, pe + 4)[0]
+                      item['pe_machine'] = f'0x{machine:04x}'
+                      item['architecture'] = {0x8664: 'AMD64', 0x14c: 'I386', 0xaa64: 'ARM64'}.get(machine, 'other')
+                      magic = struct.unpack_from('<H', data, pe + 24)[0]
+                      directories = pe + 24 + {0x20b: 112, 0x10b: 96}[magic]
+                      offset, size = struct.unpack_from('<II', data, directories + 4 * 8)
+                      item['certificate_table_offset'] = offset
+                      item['certificate_table_size'] = size
+                      item['certificate_payload_present'] = offset > 0 and size >= 8 and offset + size <= len(data)
+              except (KeyError, struct.error):
+                  pass
+              files.append(item)
+          actual = {item['filename'].lower() for item in files}
+          missing = sorted(helper.CORE - actual)
+          report = {'required_core_filenames': sorted(helper.CORE), 'missing_core_filenames': missing,
+                    'authenticode_cryptographic_verification': 'not performed', 'files': files}
+          text = json.dumps(report, indent=2) + '\n'
+          (Path(os.environ['RUNTIME_INPUT_RESULTS']) / 'runtime-inventory.json').write_text(text)
+          print(text, end='')
+          valid = not missing and all(item['architecture'] == 'AMD64' and item['certificate_payload_present'] for item in files)
+          raise SystemExit(0 if valid else 1)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-Microsoft-runtime-input-diagnostics
+          path: |
+            build/runtime-input-results/*.log
+            build/runtime-input-results/*.json
+            build/runtime-input-results/*.sha256
+          if-no-files-found: error
+          retention-days: 14
