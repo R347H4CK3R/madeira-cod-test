@@ -1,0 +1,115 @@
+name: Madeira Linux host checks
+
+on:
+  workflow_dispatch:
+  workflow_call:
+  push:
+    branches: ['fix/cod-1938090-ipa-*']
+    paths:
+      - '.github/workflows/cod-linux-checks.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  linux-host-checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      MADEIRA_SWIFT_URL: https://download.swift.org/swift-6.2.3-release/ubuntu2404/swift-6.2.3-RELEASE/swift-6.2.3-RELEASE-ubuntu24.04.tar.gz
+      MADEIRA_SWIFT_SHA256: 3e0b8eaf9210131a1756e6a1a9e9103bac83609a0ae604d6f2e791053f98f115
+      PYTHON_CPU_COUNT: '2'
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify Linux runner and initialize logs
+        run: |
+          set -euo pipefail
+          mkdir -p build/host-check-results
+          python3 - <<'PYCODE' 2>&1 | tee build/host-check-results/runner-platform.log
+          import platform
+          release = platform.freedesktop_os_release()
+          assert platform.machine() == 'x86_64', platform.machine()
+          assert release.get('ID') == 'ubuntu' and release.get('VERSION_ID') == '24.04', release
+          print('Verified Ubuntu 24.04 x86_64')
+          PYCODE
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: actions/cache/restore@v4
+        id: swift-cache
+        with:
+          path: ${{ runner.temp }}/madeira-swift623
+          key: madeira-swift-ubuntu2404-${{ runner.os }}-${{ runner.arch }}-${{ env.MADEIRA_SWIFT_SHA256 }}
+      - name: Install verified official Swift 6.2.3 archive
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift623"
+          madeira_swift_archive="$RUNNER_TEMP/madeira-swift623.tar.gz"
+          {
+            curl --fail --location --retry 3 --output "$madeira_swift_archive" "$MADEIRA_SWIFT_URL"
+            printf '%s  %s\n' "$MADEIRA_SWIFT_SHA256" "$madeira_swift_archive" | sha256sum --check --strict
+            mkdir -p "$madeira_swift_prefix"
+            tar -xzf "$madeira_swift_archive" --strip-components=1 -C "$madeira_swift_prefix"
+          } 2>&1 | tee build/host-check-results/swift-install.log
+      - name: Verify Swift version and Foundation
+        run: |
+          set -euo pipefail
+          madeira_swift_prefix="$RUNNER_TEMP/madeira-swift623"
+          printf '%s\n' "$madeira_swift_prefix/usr/bin" >> "$GITHUB_PATH"
+          "$madeira_swift_prefix/usr/bin/swiftc" --version 2>&1 | tee build/host-check-results/swift-version.log
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          version = Path('build/host-check-results/swift-version.log').read_text()
+          assert 'Swift version 6.2.3 (' in version, version
+          PYCODE
+          cat > "$RUNNER_TEMP/madeira-swift-foundation.swift" <<'SWIFT'
+          import Foundation
+          let json = Data("{\"status\":\"ok\",\"count\":3}".utf8)
+          let decoded = try JSONSerialization.jsonObject(with: json) as! [String: Any]
+          precondition(decoded["status"] as? String == "ok")
+          precondition(decoded["count"] as? Int == 3)
+          let formatter = DateFormatter()
+          formatter.locale = Locale(identifier: "en_US_POSIX")
+          formatter.timeZone = TimeZone(secondsFromGMT: 0)
+          formatter.dateFormat = "yyyy-MM-dd"
+          precondition(formatter.string(from: Date(timeIntervalSince1970: 0)) == "1970-01-01")
+          print("Swift Foundation smoke test passed")
+          SWIFT
+          "$madeira_swift_prefix/usr/bin/swiftc" "$RUNNER_TEMP/madeira-swift-foundation.swift" -o "$RUNNER_TEMP/madeira-swift-foundation" 2>&1 | tee build/host-check-results/swift-smoke-compile.log
+          "$RUNNER_TEMP/madeira-swift-foundation" 2>&1 | tee build/host-check-results/swift-smoke-run.log
+      - uses: actions/cache/save@v4
+        if: steps.swift-cache.outputs.cache-hit != 'true'
+        with:
+          path: ${{ runner.temp }}/madeira-swift623
+          key: ${{ steps.swift-cache.outputs.cache-primary-key }}
+      - name: Prepare Linux host-check dependencies
+        run: |
+          set -euo pipefail
+          {
+            sudo apt-get update
+            sudo apt-get install -y bison flex liblzma-dev
+          } 2>&1 | tee build/host-check-results/host-dependencies.log
+          mkdir -p wine/build-host-checks
+          (cd wine/build-host-checks && ../configure --enable-win64 --without-mingw --without-x --without-freetype --disable-tests --enable-winegstreamer) 2>&1 | tee build/host-check-results/wine-configure.log
+          make -C wine/build-host-checks -j2 include/all 2>&1 | tee build/host-check-results/wine-headers.log
+          echo "MADEIRA_WINE_BUILD=$GITHUB_WORKSPACE/wine/build-host-checks" >> "$GITHUB_ENV"
+      - name: Run Linux checks (two Apple checks run in cod-platform-checks.yml)
+        run: |
+          set -euo pipefail
+          python3 -u tests/host/run-checks.py --exclude check-jit-network.py --exclude check-steam-cloud.py --output-dir build/host-check-results 2>&1 | tee build/host-check-results/runner.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-COD-host-checks
+          path: build/host-check-results
+          if-no-files-found: warn
+          retention-days: 14
+
