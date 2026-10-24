@@ -3,10 +3,11 @@ name: Madeira official VC runtime input check
 on:
   workflow_dispatch:
   push:
-    branches: ['fix/cod-1938090-ipa-*']
+    branches: ['fix/cod-1938090-ipa-*', 'fix/runtime-inputs-20261024']
     paths:
       - '.github/workflows/cod-runtime-inputs.yml'
       - 'build/ci/stage-vcruntime.py'
+      - 'tests/host/test-stage-vcruntime.py'
 
 permissions:
   contents: read
@@ -32,6 +33,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends 7zip-standalone curl ca-certificates 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-install.log"
           command -v 7zz
           7zz i 2>&1 | tee "$RUNTIME_INPUT_RESULTS/7zip-version.log"
+      - name: Regress Burn container extraction with real CAB fixtures
+        run: |
+          python3 -u tests/host/test-stage-vcruntime.py \
+            2>&1 | tee "$RUNTIME_INPUT_RESULTS/extractor-regression.log"
       - name: Download the official Microsoft x64 redistributable
         run: |
           curl --proto '=https' --proto-redir '=https' --tlsv1.2 --fail --location --show-error \
