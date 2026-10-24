@@ -1,0 +1,158 @@
+name: Madeira iOS toolchain compatibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/cod-1938090-ipa-*']
+    paths:
+      - '.github/workflows/cod-ios-toolchain.yml'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+jobs:
+  stikjit-toolchain:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Select latest installed Xcode (same selection as the IPA workflow)
+        run: |
+          mkdir -p build/ios-toolchain-results
+          python3 - <<'PYCODE' 2>&1 | tee build/ios-toolchain-results/xcode-selection.log
+          import glob, os, re, subprocess
+          candidates = []
+          for app in glob.glob('/Applications/Xcode*.app'):
+              developer = app + '/Contents/Developer'
+              result = subprocess.run(['/usr/bin/xcodebuild', '-version'], env={**os.environ, 'DEVELOPER_DIR': developer}, text=True, capture_output=True)
+              match = re.search(r'Xcode (\d+(?:\.\d+)*)', result.stdout)
+              if result.returncode == 0 and match:
+                  version = tuple(map(int, match.group(1).split('.')))
+                  print(app, result.stdout.strip())
+                  candidates.append((version, developer))
+          if not candidates:
+              raise SystemExit('No usable installed Xcode')
+          version, developer = max(candidates)
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write('DEVELOPER_DIR=' + developer + '\n')
+          print('Selected:', developer)
+          PYCODE
+      - name: Record selected compiler, SDK and tracked source inputs
+        run: |
+          {
+            xcodebuild -version
+            xcrun --sdk iphoneos swiftc --version
+            xcrun --sdk iphoneos --show-sdk-path
+            xcrun --sdk iphoneos --show-sdk-version
+            xcrun --sdk iphoneos --show-sdk-build-version
+            git rev-parse HEAD
+            git ls-tree HEAD FEX wine dxmt madeira-dock
+            python3 - <<'PYCODE'
+          from pathlib import Path
+          import hashlib, subprocess
+          paths = [
+              'app/Madeira.xcodeproj/project.pbxproj',
+              'app/MadeiraJITHelper/MadeiraJITHelper.swift',
+              'app/Madeira/JITBuiltInMessages.swift',
+          ]
+          framework = Path('app/Frameworks/StikJIT.xcframework')
+          paths += [str(path) for path in sorted(framework.rglob('*')) if path.is_file()]
+          for name in paths:
+              content = Path(name).read_bytes()
+              tracked = subprocess.check_output(['git', 'show', 'HEAD:' + name])
+              if content != tracked:
+                  raise SystemExit('Tracked source mismatch: ' + name)
+              print(hashlib.sha256(content).hexdigest(), name)
+          for interface in sorted(framework.rglob('*.swiftinterface')):
+              print('\nInterface metadata:', interface)
+              print('\n'.join(interface.read_text().splitlines()[:4]))
+          PYCODE
+          } 2>&1 | tee build/ios-toolchain-results/inputs.log
+      - name: Read effective device helper build settings
+        run: |
+          xcodebuild -project app/Madeira.xcodeproj -target MadeiraJITHelper \
+            -configuration Debug -sdk iphoneos -showBuildSettings -json \
+            CODE_SIGNING_ALLOWED=NO \
+            > build/ios-toolchain-results/helper-build-settings.json \
+            2> build/ios-toolchain-results/helper-build-settings.stderr.log
+      - name: Typecheck production JIT helper against the actual StikJIT framework
+        id: typecheck
+        run: |
+          python3 -u - <<'PYCODE' 2>&1 | tee build/ios-toolchain-results/stikjit-typecheck.log
+          from pathlib import Path
+          import json, shlex, subprocess
+          output = Path('build/ios-toolchain-results')
+          records = json.loads((output / 'helper-build-settings.json').read_text())
+          settings, = [record['buildSettings'] for record in records
+                       if record['target'] == 'MadeiraJITHelper']
+          keys = ['SWIFT_VERSION', 'SWIFT_OBJC_INTEROP_MODE', 'OTHER_SWIFT_FLAGS',
+                  'SWIFT_ACTIVE_COMPILATION_CONDITIONS', 'CLANG_CXX_LANGUAGE_STANDARD',
+                  'APPLICATION_EXTENSION_API_ONLY', 'IPHONEOS_DEPLOYMENT_TARGET',
+                  'FRAMEWORK_SEARCH_PATHS']
+          selected = {key: settings.get(key, '') for key in keys}
+          (output / 'effective-swift-settings.json').write_text(json.dumps(selected, indent=2) + '\n')
+          print(json.dumps(selected, indent=2), flush=True)
+          if settings['IPHONEOS_DEPLOYMENT_TARGET'] != '26.0':
+              raise SystemExit('Expected the production helper iOS 26.0 deployment target')
+          sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
+          args = ['xcrun', '--sdk', 'iphoneos', 'swiftc', '-typecheck',
+                  '-target', 'arm64-apple-ios26.0', '-sdk', sdk,
+                  '-swift-version', settings['SWIFT_VERSION'].split('.')[0],
+                  '-module-name', 'MadeiraJITHelper',
+                  '-module-cache-path', str(output.resolve() / 'module-cache')]
+          if settings.get('APPLICATION_EXTENSION_API_ONLY') == 'YES':
+              args.append('-application-extension')
+          # Xcode's C++ interoperability setting controls the Swift importer.
+          # Preserve the helper target's effective mode, including its default.
+          mode = settings.get('SWIFT_OBJC_INTEROP_MODE', 'objc')
+          if mode == 'objcxx':
+              args += ['-cxx-interoperability-mode=default', '-Xcc',
+                       '-std=' + settings['CLANG_CXX_LANGUAGE_STANDARD']]
+          elif mode not in ('objc', ''):
+              raise SystemExit('Unsupported Swift interoperability mode: ' + mode)
+          for condition in shlex.split(settings.get('SWIFT_ACTIVE_COMPILATION_CONDITIONS', '')):
+              args += ['-D', condition]
+          args += shlex.split(settings.get('OTHER_SWIFT_FLAGS', ''))
+          framework_paths = shlex.split(settings['FRAMEWORK_SEARCH_PATHS'])
+          expected = Path('app/Frameworks/StikJIT.xcframework/ios-arm64').resolve()
+          if expected not in [Path(path).resolve() for path in framework_paths]:
+              raise SystemExit('Device StikJIT framework missing from effective search paths')
+          for path in framework_paths:
+              args += ['-F', path]
+          # The real device branch imports StikJIT; simulator stubs are inactive.
+          args += ['app/MadeiraJITHelper/MadeiraJITHelper.swift',
+                   'app/Madeira/JITBuiltInMessages.swift']
+          (output / 'swiftc-command.txt').write_text(shlex.join(args) + '\n')
+          print(shlex.join(args), flush=True)
+          result = subprocess.run(args)
+          (output / 'swiftc-exit-code.txt').write_text(str(result.returncode) + '\n')
+          raise SystemExit(result.returncode)
+          PYCODE
+      - name: Describe verification scope
+        if: always()
+        env:
+          TYPECHECK_OUTCOME: ${{ steps.typecheck.outcome }}
+        run: |
+          mkdir -p build/ios-toolchain-results
+          {
+            echo '## iOS toolchain compatibility verification'
+            echo "Production JIT helper typecheck: $TYPECHECK_OUTCOME"
+            echo 'Checks the tracked StikJIT device framework with the highest installed Xcode and effective helper Swift settings.'
+            echo 'This workflow produces compiler diagnostics; it does not build an app or IPA or verify device execution.'
+          } | tee build/ios-toolchain-results/scope.txt >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Madeira-iOS-toolchain-diagnostics
+          path: |
+            build/ios-toolchain-results/*.log
+            build/ios-toolchain-results/*.json
+            build/ios-toolchain-results/*.txt
+          if-no-files-found: warn
+          retention-days: 14
