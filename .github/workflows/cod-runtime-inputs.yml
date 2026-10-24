@@ -29,7 +29,7 @@ jobs:
           printf 'RUNTIME_INPUT_WORK=%s\n' "$RUNTIME_INPUT_WORK" >> "$GITHUB_ENV"
           mkdir -p "$RUNTIME_INPUT_WORK" "$RUNTIME_INPUT_RESULTS"
           sudo apt-get update 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-update.log"
-          sudo apt-get install -y --no-install-recommends 7zip curl ca-certificates 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-install.log"
+          sudo apt-get install -y --no-install-recommends 7zip-standalone curl ca-certificates 2>&1 | tee "$RUNTIME_INPUT_RESULTS/apt-install.log"
           command -v 7zz
           7zz i 2>&1 | tee "$RUNTIME_INPUT_RESULTS/7zip-version.log"
       - name: Download the official Microsoft x64 redistributable

@@ -16,3 +16,18 @@
  
    /* iOS-Madeira: refuse to compile obviously-invalid guest RIPs. After a
     * NULL-vtable virtual call (`call [rax+8]` with rax=0), control flow
+--- a/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp
++++ b/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp
+@@ -706,2 +706,3 @@
+    * data in a dual-mapped pool page" is distinguishable from ordinary private memory. */
++#ifdef _WIN32
+   MEMORY_BASIC_INFORMATION mbi {};
+@@ -716,2 +717,8 @@
+                     mbi.Protect, type, mbi.State);
++#else
++  LogMan::Msg::EFmt("[caspal128] MISALIGNED-UNSUPPORTED Size={} addrReg=x{} addr={:#x} misalign={} "
++                    "crosses16B={}",
++                    Size, AddressReg, GPRs[AddressReg], GPRs[AddressReg] & 15,
++                    (GPRs[AddressReg] & 15) ? "yes" : "no");
++#endif
+ }

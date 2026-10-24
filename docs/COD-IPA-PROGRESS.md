@@ -1,6 +1,6 @@
 # COD HQ test IPA progress — 2026-10-24
 
-Status: STRICT XCODE 27 BUILD IN PROGRESS in R347H4CK3R/madeira-cod-test. No new IPA has been built or validated yet. COD startup remains untested in a new build.
+Status: the latest strict Xcode27 build stopped at a second FEX diagnostic compile defect. Its focused repair is verified locally and ready for the next build in R347H4CK3R/madeira-cod-test. No new IPA has been built or validated yet. COD startup remains untested in a new build. Earlier sections preserve historical snapshots; the final update records current results.
 
 ## Source and preservation
 
@@ -10,7 +10,7 @@ Status: STRICT XCODE 27 BUILD IN PROGRESS in R347H4CK3R/madeira-cod-test. No new
 - Pinned FEX: 26859e184ad90f0e811d7f8bbd943a4b1573a2c3; Wine: 4f5b19718f4de88ecc5cb0dc08b119497a67ba8f; DXMT: 35a4db11bd1bda380c5176a3bc6c1878f7192101; Dock: 3cadfbea700e4da4b04e331dd7ef1ba633dfacef.
 - Full recursive manifest: diagnostics/cod-ipa-submodules.txt. Recursive initialization succeeds for the pinned base.
 - Upstream main at audit: e3a88fddb8daed1f5ac28a45dcb4663d65192629, 524 commits ahead / 1 fork-only commit. Upstream fetch exposed unreachable historical submodule objects (FEX 22337c8d..., Wine 0511f7e7...); this did not change the pinned working tree. No blanket upstream merge.
-- FEX/AGENTS.md prohibits AI-generated code contributions. No FEX source modifications are planned.
+- FEX/AGENTS.md prohibits AI-generated code contributions. The later diagnostic repair section records the explicit user-authorized override for two proven local build defects; no upstream contribution is made.
 
 ## Hardware and toolchain compatibility
 
@@ -87,3 +87,11 @@ No connected iPhone USB interface was detected. Device launch/gameplay remains u
 The strict Xcode27 run40067316290 stopped at the pinned FEX source's unguarded references to ARM64EC-only diagnostic counters. The CPU-probe configure correction worked; native Wine and patched PE ntdll completed under strict failure propagation. A two-line FEX_IOS_HOST guard patch now matches the existing guarded declarations, without enabling Windows-only frontend hooks or substituting counters. The unchanged FEX gitlink plus local build patch are recorded separately. Unpatched extracted production code fails native compilation; patched native and active-producer diagnostics pass, with independent review. The specific local build patch is authorized under the user's explicit FEX/source-repair task; it overrides the upstream AGENTS contribution guideline for this user-fork build only, and is not an upstream contribution.
 
 Standalone Linux CI run40067923452 succeeded with checksum-verified Swift6.2.3 and prepared Wine headers:48/48 selected checks,50 discovered,2 named Mac delegations. Uploaded ZIP checksum and every log/JSON exit verified. The main workflow now calls that same reusable test workflow. The new FEX regression increases the next discovered inventory by one and still requires a full native FEX compile. No IPA exists yet.
+
+## Latest strict build and input preflight
+
+Run40068582962 at c2345d31ed1cbdab0f07601f09812e9df768eaf7 completed its called Linux job successfully:49/49 selected scripts passed,51 discovered,2 explicit Apple delegations. Full logs and artifact hashes were verified. The native build compiled the first FEX guard repair, but stopped at Arm64.cpp's unguarded Windows-only VirtualQuery diagnostic. The narrow patch now keeps that query under _WIN32 and reports genuine existing size/address/misalignment fields on native builds. CASPAL atomics and opcode handling are unchanged. Extracted production-source regressions reproduce the original compiler error, pass after patching, and verify identical Windows output. Independent review found no blockers; the full native build remains required.
+
+The independent Microsoft-runtime preflight40069435656 failed before download because Ubuntu's 7zip package supplies7z, while the production helper requires7zz. This is a dependency failure, not evidence of an extraction-algorithm defect. Its dependency is being corrected to the official standalone7zz package; actual Microsoft extraction remains unverified until the next run.
+
+Local focused verification also passes all4 bootstrap behavioral cases and all23 IPA-validator fixtures. These fixtures are not an application build. No IPA, signing success, device launch, or Call of Duty startup success is claimed.
