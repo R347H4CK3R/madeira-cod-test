@@ -1,6 +1,6 @@
 # COD HQ test IPA progress — 2026-10-24
 
-Status: the next full build is ready with separately verified runtime-input, Metal and Linux-toolchain repairs. Previous strict Xcode27 run40069910949 built Wine, patched ARM64EC ntdll, FEX, pairing and LLVM; LLVM's completed cache is saved. No new IPA has been built or validated yet. COD startup remains untested in a new build. Earlier sections preserve historical snapshots; the final update records current results.
+Status: [full run40072688727](https://github.com/R347H4CK3R/madeira-cod-test/actions/runs/40072688727) is building fc628cca8c041c3166152b999335b133b21d961e with separately verified runtime-input, Metal and Linux-toolchain repairs. Previous strict Xcode27 run40069910949 built Wine, patched ARM64EC ntdll, FEX, pairing and LLVM; LLVM's completed cache is saved. No new IPA has been built or validated yet. COD startup remains untested in a new build. Earlier sections preserve historical snapshots; the final update records current results.
 
 ## Source and preservation
 
@@ -109,3 +109,5 @@ The host interruption stall reproduces in a minimal FoundationNetworking cancell
 Both remaining isolated probes are now verified successful. Linux run40072036246 at0447f4a0bb17de22da3fa0d9acd5d540540037a3 used a cold-cache checksum-pinned Swift6.4.1 install and passed49/49 checks,51 discovered,2 named Apple delegations. All6 Steam-library ASan phases passed in19.513s. Its66,528-byte artifact SHA2564e10a02e8a6ebed1cdc765dbe84e5c038f475f5726b6b6822cc918106658f69b was verified locally. Tests, timeouts, authentication and downloader code were not changed for this repair.
 
 Metal run40072320821 at64c8b43a3ef763d10725ec7959b430253e5dc4cc reproduced the original full-shader error, compiled all3 patched shaders, and emitted actual AIR IR. Installed Apple headers and the IR confirm the original32-bit threadgroup relaxed fetch-add and returned old index. Independent review found no blocker. The one-call source patch plus idempotent build adapter are integrated; LLVM's build script/cache key stays unchanged. [Actual Metal compiler evidence](diagnostics/cod-metal-atomic-verification.md). These probes establish input/compiler/test behavior; the full app link and actual IPA packaging still must pass.
+
+All verified repairs were pushed together at fc628cca8c041c3166152b999335b133b21d961e. The new full run40072688727 and its called host job are active. The exact-source runtime-input check40072688877 has already succeeded. Recursive submodule pins and tracked source trees were verified before the push. [Swift6.4.1 signature, cancellation comparison and real CI evidence](diagnostics/cod-linux-swift641-verification.md). App build5 still requires a successful full compile and package; no download is fabricated.
