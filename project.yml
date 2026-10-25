@@ -1,6 +1,10 @@
 name: LocalCoder
 options:
   bundleIdPrefix: com.localcoder
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
 settings:
   base:
     IPHONEOS_DEPLOYMENT_TARGET: '26.0'
@@ -14,6 +18,8 @@ targets:
     type: application
     platform: iOS
     sources: [LocalCoderApp]
+    dependencies:
+      - package: ZIPFoundation
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.localcoder.unified
