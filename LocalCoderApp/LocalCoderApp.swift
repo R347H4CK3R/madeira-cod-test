@@ -1,60 +1,110 @@
 import SwiftUI
 import WebKit
 import FoundationModels
+import ZIPFoundation
+import UniformTypeIdentifiers
 
 @main struct LocalCoderApp: App {
-    var body: some Scene { WindowGroup { ContentView().preferredColorScheme(.dark) } }
+    var body: some Scene { WindowGroup { MainScreen().preferredColorScheme(.dark) } }
 }
-@MainActor @Observable final class LocalEngine {
+@MainActor @Observable final class Brain {
     var prompt = ""
-    var messages: [String] = []
+    var lines: [String] = []
+    var error = ""
     var busy = false
-    var status = ""
     private var session: LanguageModelSession?
     func send() async {
         let value = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty && !busy else { return }
-        guard SystemLanguageModel.default.isAvailable else { status = "Apple on-device model unavailable. Check Apple Intelligence settings."; return }
+        guard SystemLanguageModel.default.isAvailable else { error = "Apple on-device model unavailable. Enable Apple Intelligence."; return }
         prompt = ""
-        messages.append("You: " + value)
+        lines.append("You: " + value)
         busy = true
         defer { busy = false }
         do {
-            if session == nil { session = LanguageModelSession(instructions: "Assist with programming. You cannot execute code locally; use the Windows tab for commands and builds.") }
-            let reply = try await session!.respond(to: value)
-            messages.append("Local AI: " + reply.content)
-            status = ""
-        } catch { status = error.localizedDescription }
+            if session == nil {
+                session = LanguageModelSession(instructions: "You are an iOS programming assistant. Help diagnose Swift, Xcode, app and IPA problems. You cannot compile native Swift iOS applications directly on a normal iPhone. Archive inspection is local, but source-code changes need an actual builder. Never claim you ran tests or signed code.")
+            }
+            let answer = try await session!.respond(to: value)
+            lines.append("AI: " + answer.content)
+            error = ""
+        } catch { error = error.localizedDescription }
     }
 }
-struct ContentView: View {
-    @State private var engine = LocalEngine()
+@MainActor @Observable final class ArchiveInspector {
+    var report = "Choose an IPA from Files to inspect its structure locally."
+    var filename = ""
+    func inspect(_ url: URL) {
+        let access = url.startAccessingSecurityScopedResource()
+        defer { if access { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let destination = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".ipa")
+            try FileManager.default.copyItem(at: url, to: destination)
+            defer { try? FileManager.default.removeItem(at: destination) }
+            let archive = try Archive(url: destination, accessMode: .read)
+            let entries = Array(archive)
+            let apps = entries.filter { $0.path.hasPrefix("Payload/") && $0.path.hasSuffix(".app/Info.plist") }
+            let binaries = entries.filter { $0.path.hasSuffix("/_CodeSignature/CodeResources") }
+            let frameworks = entries.filter { $0.path.contains(".app/Frameworks/") && $0.path.hasSuffix(".framework/") }
+            var lines = ["Archive: \(url.lastPathComponent)", "Entries: \(entries.count)", "App manifests: \(apps.count)", "Code signature resources: \(binaries.count)", "Embedded frameworks: \(frameworks.count)"]
+            if let entry = apps.first {
+                var data = Data()
+                _ = try archive.extract(entry, consumer: { data.append($0) })
+                if let plist = try PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
+                    for key in ["CFBundleIdentifier","CFBundleDisplayName","CFBundleExecutable","CFBundleShortVersionString","MinimumOSVersion"] {
+                        lines.append("\(key): \(plist[key] ?? "missing")")
+                    }
+                }
+            } else { lines.append("WARNING: No Payload/*.app/Info.plist found.") }
+            if binaries.isEmpty { lines.append("Unsigned or signature files absent; installation requires signing.") }
+            lines.append("Inspecting does not rebuild a native binary. Editing compiled executable code requires source/toolchain and produces a signature-invalidating change.")
+            filename = url.lastPathComponent
+            report = lines.joined(separator: "\n")
+        } catch { report = "Inspection failed: \(error.localizedDescription)" }
+    }
+}
+struct MainScreen: View {
+    @State private var brain = Brain()
+    @State private var inspector = ArchiveInspector()
+    @State private var importFile = false
     var body: some View {
         TabView {
             NavigationStack {
                 VStack {
-                    ScrollView { LazyVStack(alignment: .leading, spacing: 14) { ForEach(engine.messages.indices, id: \.self) { i in Text(engine.messages[i]).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) } }.padding() }
-                    if !engine.status.isEmpty { Text(engine.status).font(.caption).foregroundStyle(.orange) }
-                    if engine.busy { ProgressView() }
+                    ScrollView { LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(brain.lines.indices, id: \.self) { index in Text(brain.lines[index]).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                    }.padding() }
+                    if !brain.error.isEmpty { Text(brain.error).foregroundStyle(.orange).font(.caption) }
+                    if brain.busy { ProgressView() }
                     HStack {
-                        TextField("Ask about code", text: $engine.prompt, axis: .vertical)
-                        Button("Send") { Task { await engine.send() } }.disabled(engine.busy)
+                        TextField("Describe an app or paste an error", text: $brain.prompt, axis: .vertical)
+                        Button("Send") { Task { await brain.send() } }.disabled(brain.busy)
                     }.padding()
-                }.navigationTitle("Local AI")
-            }.tabItem { Label("Local", systemImage: "cpu") }
+                }.navigationTitle("LocalCoder AI")
+            }.tabItem { Label("AI Chat", systemImage: "bubble.left.and.bubble.right") }
             NavigationStack {
-                RemoteView(url: URL(string: "https://gaminglaptop.tail54e01b.ts.net")!)
-                    .navigationTitle("Windows Code")
-            }.tabItem { Label("Windows", systemImage: "laptopcomputer") }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Diagnose an IPA offline").font(.title2).bold()
+                        Button("Import IPA or ZIP") { importFile = true }.buttonStyle(.borderedProminent)
+                        Text(inspector.report).font(.system(.footnote, design: .monospaced)).textSelection(.enabled)
+                        ShareLink(item: inspector.report) { Label("Share diagnosis", systemImage: "square.and.arrow.up") }
+                    }.padding()
+                }.navigationTitle("IPA Inspector")
+                .fileImporter(isPresented: $importFile, allowedContentTypes: [.zip, .data], allowsMultipleSelection: false) { result in
+                    if case .success(let files) = result, let url = files.first { inspector.inspect(url) }
+                    if case .failure(let error) = result { inspector.report = error.localizedDescription }
+                }
+            }.tabItem { Label("Inspect", systemImage: "archivebox") }
+            NavigationStack {
+                EmbeddedBrowser(url: URL(string: "https://github.com/actions")!)
+                    .navigationTitle("Cloud Builds")
+            }.tabItem { Label("Builds", systemImage: "hammer") }
         }
     }
 }
-struct RemoteView: UIViewRepresentable {
+struct EmbeddedBrowser: UIViewRepresentable {
     let url: URL
-    func makeUIView(context: Context) -> WKWebView {
-        let view = WKWebView()
-        view.load(URLRequest(url: url))
-        return view
-    }
-    func updateUIView(_ uiView: WKWebView, context: Context) {}
+    func makeUIView(context: Context) -> WKWebView { let view = WKWebView(); view.load(URLRequest(url: url)); return view }
+    func updateUIView(_ webView: WKWebView, context: Context) {}
 }
