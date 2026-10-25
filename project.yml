@@ -1,0 +1,20 @@
+name: LocalCoder
+options:
+  bundleIdPrefix: com.localcoder
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: '26.0'
+    SWIFT_VERSION: '5.9'
+    TARGETED_DEVICE_FAMILY: '1'
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_CFBundleDisplayName: LocalCoder
+targets:
+  LocalCoder:
+    type: application
+    platform: iOS
+    sources: [LocalCoderApp]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.localcoder.unified
+        CODE_SIGNING_ALLOWED: NO
