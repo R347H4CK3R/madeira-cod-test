@@ -12,7 +12,7 @@ jobs:
       - name: Select Xcode 26
         run: |
           ls -d /Applications/Xcode* || true
-          if [ -d /Applications/Xcode_26.app ]; then sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer; fi
+          sudo xcode-select -s /Applications/Xcode_26.1.1.app/Contents/Developer
           xcodebuild -version
       - name: Install XcodeGen
         run: brew install xcodegen
