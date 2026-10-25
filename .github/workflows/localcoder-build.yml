@@ -1,0 +1,33 @@
+name: LocalCoder isolated IPA build
+on:
+  push:
+    branches:
+      - build/localcoder-ios-20261025
+  workflow_dispatch:
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26
+        run: |
+          ls -d /Applications/Xcode* || true
+          if [ -d /Applications/Xcode_26.app ]; then sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer; fi
+          xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Compile app
+        run: xcodebuild -project LocalCoder.xcodeproj -scheme LocalCoder -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/LocalCoder.app dist/Payload/
+          cd dist && zip -q -r LocalCoder-unsigned.ipa Payload
+          unzip -t LocalCoder-unsigned.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalCoder-unsigned-IPA
+          path: dist/LocalCoder-unsigned.ipa
+          if-no-files-found: error
