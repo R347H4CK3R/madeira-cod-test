@@ -3,6 +3,7 @@ import WebKit
 import FoundationModels
 import ZIPFoundation
 import UniformTypeIdentifiers
+import UIKit
 
 @main struct LocalCoderApp: App {
     var body: some Scene { WindowGroup { MainScreen().preferredColorScheme(.dark) } }
@@ -92,7 +93,7 @@ struct MainScreen: View {
                         ShareLink(item: inspector.report) { Label("Share diagnosis", systemImage: "square.and.arrow.up") }
                     }.padding()
                 }.navigationTitle("IPA Inspector")
-                .fileImporter(isPresented: $importFile, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
+                .fileImporter(isPresented: $importFile, allowedContentTypes: [UTType(filenameExtension: "ipa") ?? .data, .zip, .data], allowsMultipleSelection: false) { result in
                     if case .success(let files) = result, let url = files.first { inspector.inspect(url) }
                     if case .failure(let error) = result { inspector.report = error.localizedDescription }
                 }
