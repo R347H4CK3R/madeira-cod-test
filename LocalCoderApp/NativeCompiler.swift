@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
     var source = "import SwiftUI\n@main struct NewNativeApp: App { var body: some Scene { WindowGroup { Text(\"Hello iPhone\") } } }"
     var status = "Native code can be edited and exported offline. LocalCoder has no embedded Swift/Clang compiler."
     var output: URL?
-    var compilerReport = "Not checked"
+    var compilerReport = "Native compilation is unavailable until an iPhoneOS SDK is installed and compiler/linker job execution is verified."
     func checkNativeCompiler() { compilerReport = NyxianCompilerProbe.inspect() }
     func resetTemplate() {
         switch language {
@@ -69,6 +69,7 @@ struct NativeCompilerView: View {
                 Text(project.status).font(.caption).foregroundStyle(.secondary)
                 Button("Check local native toolchain") { project.checkNativeCompiler() }.buttonStyle(.bordered)
                 Text(project.compilerReport).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                Text("To install an SDK, open the SDK tab under More. Project export is not compilation.").font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Export native project") { project.exportProject() }.buttonStyle(.borderedProminent)
                     if let output=project.output { ShareLink(item:output) { Label("Save", systemImage:"square.and.arrow.up") } }
