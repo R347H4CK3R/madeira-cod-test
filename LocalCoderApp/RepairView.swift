@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
     var repairedIPA: URL?
     var automaticStatus = "Not run"
     var sourceDiscoveryReport = "No source search performed."
+    var repositoryDiscoveryReport = "Public repository search not run."
     private var archiveURL: URL?
     func importFile(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
@@ -27,6 +28,7 @@ import UniformTypeIdentifiers
                 ipaName = url.lastPathComponent
                 inspect()
                 discoverSource()
+                Task { await discoverPublicSource() }
             } else {
                 let data = try Data(contentsOf: url)
                 guard data.count < 5_000_000, let text = String(data:data,encoding:.utf8) else {
@@ -93,6 +95,11 @@ import UniformTypeIdentifiers
     func discoverSource() {
         guard let archiveURL else { sourceDiscoveryReport = "Import an IPA or ZIP first."; return }
         sourceDiscoveryReport = SourceDiscovery.inspect(archiveURL)
+    }
+    func discoverPublicSource() async {
+        guard let archiveURL else { repositoryDiscoveryReport = "Import an IPA first."; return }
+        repositoryDiscoveryReport = "Searching public repositories…"
+        repositoryDiscoveryReport = await SourceDiscovery.searchPublicRepositories(archiveURL)
     }
     func automaticRepair() {
         repairedIPA = nil
@@ -177,6 +184,8 @@ struct RepairView: View {
                     TextField("What happened?",text:$model.issue,axis:.vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
                     Button("Find source automatically") { model.discoverSource() }.buttonStyle(.bordered)
                     Text(model.sourceDiscoveryReport).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
+                    Button("Search public source repositories") { Task { await model.discoverPublicSource() } }.buttonStyle(.bordered)
+                    Text(model.repositoryDiscoveryReport).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
                     Button("Auto-diagnose, repair & export when possible") { model.automaticRepair() }.buttonStyle(.borderedProminent)
                     Text(model.automaticStatus).font(.caption).textSelection(.enabled)
