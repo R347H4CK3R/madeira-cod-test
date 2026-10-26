@@ -1,170 +1,54 @@
-<p align="center">
-  <img src="docs/assets/banner.png" alt="Madeira — Bringing PC gaming to your iPhone." width="100%">
-</p>
+# PocketForge — iPhone app workshop
 
-<p align="center">
-  <a href="https://discord.gg/4t5mNjwCn7"><img src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdiscord.com%2Fapi%2Finvites%2F4t5mNjwCn7%3Fwith_counts%3Dtrue&query=%24.approximate_member_count&suffix=%20members&label=Discord&logo=discord&logoColor=white&color=5865F2&style=for-the-badge" alt="Join the Madeira Discord"></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="https://github.com/willfaust/Madeira/releases"><img src="https://img.shields.io/github/v/release/willfaust/Madeira?label=Release&style=for-the-badge&color=brightgreen" alt="Latest release"></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0--or--later-yellow?style=for-the-badge" alt="License: GPL-3.0-or-later"></a>
-</p>
-
-Madeira runs Windows PC games on an iPhone, with no jailbreak. Games run as they
-are, unmodified, inside a single iOS app.
-
-> [!NOTE]
-> Madeira is an active research project. Many games start and some play well,
-> but performance and compatibility vary from game to game, and things change
-> quickly. Expect rough edges.
-
-## How it works
-
-| Layer | What it does |
-|---|---|
-| **[FEX-Emu](https://github.com/FEX-Emu/FEX)** | Translates the game's x86 and x86-64 code to ARM64 as it runs. |
-| **[Wine](https://www.winehq.org/)** 11.4 | Provides Windows. It is built for ARM64EC, so Wine itself runs natively and only the game's own code is translated. 32-bit games run through WoW64. |
-| **[DXMT](https://github.com/3Shain/DXMT)** | Draws Direct3D 9, 10 and 11 with Metal. |
-| **[madeira-d3d12](madeira-d3d12)** | Madeira's own Direct3D 12 implementation on Metal, converting DXIL shaders at run time with Apple's Metal Shader Converter. |
-
-iOS apps cannot start other programs, so everything runs in one process: even
-Wine's server runs as a thread instead of a separate program.
-
-## Features
-
-- **Game library** with artwork, search and a Windows desktop session.
-- **Steam**: sign in, browse the games you own, install and update them, and
-  start them through Valve's own Windows Steam client (Madeira Dock).
-- **Steam Cloud saves**: saves sync with Steam Cloud when Madeira starts and
-  before a game starts, and **Upload saves and close Madeira** in the game
-  menu sends them when you stop playing. Saves that
-  changed on both sides are never overwritten without asking, and anything a
-  sync replaces is backed up.
-- **Controllers**: Bluetooth controllers through XInput, plus customisable
-  on-screen touch controls.
-- **Keyboard, mouse and trackpad** passed through to games as real input.
-- **Video and audio** for cutscenes and music, through FFmpeg, VideoToolbox and AudioToolbox.
+PocketForge is an experimental iPhone app for local AI-assisted development, IPA inspection, repair diagnostics and offline HTML/JavaScript app packaging. Native compilation is **not yet operational**.
 
 ## Requirements
+- iPhone running iOS 26 or later.
+- An iOS signing/sideloading method for installing unsigned IPA archives.
+- Apple Intelligence / Foundation Models availability for local AI features. The model is not guaranteed to be available on every compatible iPhone.
+- Internet connection only for optional GitHub repository discovery. Web-app creation and static IPA inspection work offline.
 
-- An iPhone on **iOS 26 or later**, the only version Madeira currently runs
-  on reliably. Development happens on recent Pro iPhones.
-- **JIT**, which iOS only allows while a debugger is attached. Madeira can use
-  [StikDebug](https://github.com/StikDebug/StikDebug) or its built-in StikJIT
-  helper. On iOS 27 the built-in helper can pair the iPhone itself, without a
-  computer.
-- An **Apple ID** to sideload the app. A free account works; its signing
-  expires after 7 days, so the app needs refreshing weekly. Your games and
-  saves are kept across reinstalls.
+## Install
+1. Open **Actions** in this repository, then select a successful PocketForge build.
+2. Download its `PocketForge-unsigned-IPA` artifact; extract the ZIP to find `PocketForge-unsigned.ipa`.
+3. Sign the unsigned IPA through your own supported signing solution and install it. An unsigned IPA cannot be installed directly on ordinary stock iOS.
+4. Launch PocketForge. The new bundle identifier is `dev.pocketforge.studio`; this is a different installation from older LocalCoder builds (`com.localcoder.unified`).
 
-Because JIT needs a debugger, Madeira cannot be offered on the App Store.
+## Build from GitHub Actions
+Workflow: `.github/workflows/localcoder-build.yml`. Builds using macOS runner, Xcode 26, XcodeGen, ZIPFoundation and the public Nyxian 0.11.4 framework release. Packaging success proves an IPA ZIP was created, **not** that the compiler works at runtime.
 
-## Installing
+## Use
 
-1. Download the IPA from the [latest release](https://github.com/willfaust/Madeira/releases).
-2. Sideload it with your own Apple ID using SideStore, AltStore, Sideloadly,
-   Plume or a similar tool.
-3. Open Madeira and enable JIT. Automatic mode uses StikDebug when installed,
-   otherwise it guides you through the built-in setup; see
-   [JIT setup](docs/JIT.md).
-4. In **Settings**, check that **JIT** and **Memory+** both show a green check:
-   Madeira then says **Ready to play**.
+### AI Chat
+Type a prompt and tap Send for local model responses. The attachment (+) menu accepts local files up to the implementation's size limits. The hammer menu offers:
+- **Generate runnable web app**: creates an HTML/JS draft that can be previewed in PocketForge.
+- **Generate native SwiftUI source**: exports a Swift source project ZIP; it is *not a compiled executable*.
+- **Check native compiler**: reports on Nyxian framework / SDK readiness.
 
-Some 64-bit games need Microsoft's Visual C++ runtime, which is not included
-(see [Licensing](#licensing)).
+### Create App
+Write HTML/CSS/JavaScript, tap **Run temporarily** to use the ephemeral WebKit preview, and **Build unsigned IPA** to package the precompiled WebKit shell with your HTML. Tap **Save editable app** to preserve the project's editable data. **Remake saved app** reopens that saved project, which can be modified and rebuilt.
 
-## Building from source
+WebKit preview uses a nonpersistent website data store. Saved editable project records live in the app's Documents directory and survive preview closure; they are **not** temporary. They can be lost if the app is uninstalled without backup.
 
-```sh
-git clone --recurse-submodules https://github.com/willfaust/Madeira.git
-```
+### Repair
+Import an IPA and optionally a diagnostic log; select **Analyze and recommend fix**. Embedded source and public repository *candidates* may be discovered, but a filename or repository name is not proof it matches the executable. The supported automated patch changes an absent display-name field; it produces an unsigned IPA with invalidated signature files removed. Unsupported cases can produce a distinct starter WebKit replacement app, **not an equivalent copy** of the original native app.
 
-`FEX`, `wine`, `dxmt` and `madeira-dock` are submodules that point at Madeira's
-own forks; upstream checkouts will not build here. The build has several parts
-(the Wine unix libraries, the ARM64EC Windows modules, FEX, DXMT and the app)
-and some inputs that are not in the repository, such as the toolchains.
-[`docs/BUILDING.md`](docs/BUILDING.md) walks through all of it.
+### Binary evidence
+The Repair tab exports a bounded resource inventory and string evidence from Mach-O binaries. It cannot recover the original application source or fully recreate missing gameplay logic.
 
-### Repository layout
+### Native
+Generate and export Swift/Objective-C source archives. There is no verified native compile/link-and-run path on iPhone yet; the included framework presence/SDK probes do not establish compiler functionality.
 
-| Path | Contents |
-|---|---|
-| [`app/`](app) | The iOS app: SwiftUI front end, Wine bridge and bundled resources |
-| [`wine/`](https://github.com/willfaust/wine), [`FEX/`](https://github.com/willfaust/FEX), [`dxmt/`](https://github.com/willfaust/dxmt), [`madeira-dock/`](https://github.com/willfaust/madeira-dock) | Madeira's forks and the Steam client launcher (submodules) |
-| [`madeira-d3d12/`](madeira-d3d12) | The native Direct3D 12 runtime |
-| [`build/`](build) | Build scripts and iOS-side sources, one folder per component |
-| [`tests/`](tests) | Host checks and x86, x86-64 and DXMT test programs |
-| [`tools/`](tools) | Helper scripts |
-| [`docs/`](docs) | Documentation |
-| [`research/`](research) | Experiments that are not part of the app |
+### Privacy and file handling
+Offline operations remain on the device. Public GitHub search communicates search terms to GitHub. Imported IPA and log files may be copied into app temporary storage while being processed. Verify sensitive files before sharing generated diagnostics.
 
-## Documentation
+## Important limitations
+- No general-purpose, validated native executable runner within PocketForge.
+- No guaranteed on-device native Swift / Objective-C compilation or arbitrary native IPA rebuilding.
+- No reliable decompilation of complete original iOS app source.
+- No automatic recreation of all original gameplay or interfaces from an opaque IPA.
+- Unsigned IPA exports require external signing before installation.
+- The app's UI and workflows need physical-device validation; passing CI compilation is not runtime validation.
 
-| Topic | Document |
-|---|---|
-| Building from a clean checkout | [`docs/BUILDING.md`](docs/BUILDING.md) |
-| StikDebug and built-in JIT setup | [`docs/JIT.md`](docs/JIT.md) |
-| The game library | [`docs/LIBRARY.md`](docs/LIBRARY.md) |
-| Steam sign-in, library and downloads | [`docs/STEAM_SIGNIN.md`](docs/STEAM_SIGNIN.md), [`docs/STEAM_LIBRARY.md`](docs/STEAM_LIBRARY.md) |
-| Steam Cloud saves | [`docs/STEAM_CLOUD.md`](docs/STEAM_CLOUD.md) |
-| Madeira Dock (the Steam client) | [`docs/MADEIRA_DOCK.md`](docs/MADEIRA_DOCK.md) |
-| 32-bit games (WoW64) | [`docs/WOW64.md`](docs/WOW64.md) |
-| Controllers and touch controls | [`docs/CONTROLLERS.md`](docs/CONTROLLERS.md) |
-| Keyboard, mouse and trackpad | [`docs/KEYBOARD_MOUSE.md`](docs/KEYBOARD_MOUSE.md) |
-| Audio and video | [`docs/MEDIA.md`](docs/MEDIA.md) |
-| Licensing in detail | [`docs/LICENSING.md`](docs/LICENSING.md) |
-
-## Licensing
-
-Madeira is licensed under **GPL-3.0-or-later** ([`LICENSE`](LICENSE)) with
-the **Madeira Converter Exception** ([`LICENSE-EXCEPTION.md`](LICENSE-EXCEPTION.md)),
-an additional permission that allows it to work with Apple's Metal Shader
-Converter.
-
-The projects it builds on keep their own licenses upstream, but Madeira's forks
-are not all licensed the same way as their upstreams:
-
-| Component | License |
-|---|---|
-| [Wine fork](https://github.com/willfaust/wine) | LGPL-2.1-or-later, like upstream Wine |
-| [FEX-Emu fork](https://github.com/willfaust/FEX), [DXMT fork](https://github.com/willfaust/dxmt) | Upstream code stays MIT; Madeira's changes are GPL-3.0-or-later with the exception |
-| [rpmalloc fork](https://github.com/willfaust/rpmalloc) | Upstream code stays 0BSD; Madeira's changes are GPL-3.0-or-later with the exception |
-| [Madeira Dock](https://github.com/willfaust/madeira-dock) | GPL-3.0-or-later with the exception |
-
-Anything obtained earlier under a permissive license stays available under it.
-Per-component details, including GnuTLS, Nettle, GMP, FFmpeg and LLVM, are in
-[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md); the license texts are in
-[`LICENSES/`](LICENSES).
-
-Microsoft's Visual C++ runtime DLLs are **not** distributed with Madeira. To
-build with them, supply them yourself as described in
-[`tools/fetch-vcruntime.md`](tools/fetch-vcruntime.md).
-
-## Contributing
-
-Contributions are welcome under GPL-3.0-or-later; see
-[`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-Madeira's forks contain a lot of AI-assisted work. FEX-Emu does not accept
-AI-generated code, so please **do not send changes from these forks upstream**
-to FEX-Emu, and check each upstream project's contribution policy before
-proposing anything to it.
-
-## Credits
-
-- **Will Faust** ([@willfaust](https://github.com/willfaust)): created Madeira
-- **Nick** ([@125hz](https://github.com/125hz)): 32-bit game support, the game library and Madeira Dock
-- **Jfishin** ([@Jfishin](https://github.com/Jfishin)): the original native Steam sign-in, library and downloads
-- **Jesse** ([@JesseLovelace](https://github.com/JesseLovelace)): Steam Cloud saves, faster game launches, and fixes that let more games run
-- **Dan Perks** ([@danperks](https://github.com/danperks)): in-app JIT without StikDebug, and pairing without a computer
-
-Madeira is built on [Wine](https://www.winehq.org/), [FEX-Emu](https://github.com/FEX-Emu/FEX),
-[DXMT](https://github.com/3Shain/DXMT) by Feifan He (3Shain) with the Direct3D 9
-frontend by David Acevedo (dacevedo12), [rpmalloc](https://github.com/mjansson/rpmalloc)
-by Mattias Jansson, [StikDebug](https://github.com/StikDebug/StikDebug),
-[StikJIT](https://github.com/StikDebug/StikJIT) and
-[idevice](https://github.com/jkcoxson/idevice) for enabling JIT. Thank you to everyone who contributes to them.
-
-<p align="center">
-  <a href="https://discord.gg/4t5mNjwCn7"><b>Join the community on Discord</b></a>
-</p>
+## Repository
+PocketForge source currently resides on branch `build/localcoder-ios-20261025` in `R347H4CK3R/madeira-cod-test` until a dedicated repository is created. The requested dedicated repository must be created or authorized through a connection with repository-creation permissions.
