@@ -35,6 +35,7 @@ import UniformTypeIdentifiers
     var report = "Choose an IPA from Files to inspect its structure locally."
     var filename = ""
     func inspect(_ url: URL) {
+        guard ["ipa", "zip"].contains(url.pathExtension.lowercased()) else { report = "Select an IPA or ZIP file."; return }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
         do {
@@ -91,7 +92,7 @@ struct MainScreen: View {
                         ShareLink(item: inspector.report) { Label("Share diagnosis", systemImage: "square.and.arrow.up") }
                     }.padding()
                 }.navigationTitle("IPA Inspector")
-                .fileImporter(isPresented: $importFile, allowedContentTypes: [.zip, .data], allowsMultipleSelection: false) { result in
+                .fileImporter(isPresented: $importFile, allowedContentTypes: [.item], allowsMultipleSelection: false) { result in
                     if case .success(let files) = result, let url = files.first { inspector.inspect(url) }
                     if case .failure(let error) = result { inspector.report = error.localizedDescription }
                 }
