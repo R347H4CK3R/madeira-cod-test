@@ -59,7 +59,7 @@ enum SourceDiscovery {
                       let url = item["html_url"] as? String else { return nil }
                 return full+" — "+url
             }
-            return "Unverified public source candidates for \\(queryTerm):\\n"+entries.joined(separator:"\\n")+"\\nThese are name matches only, NOT authenticated source for this IPA. Confirm bundle ID, revision, and binary identifiers before patching."
+            return "Unverified public source candidates for \(queryTerm):\n"+entries.joined(separator:"\n")+"\nThese are name matches only, NOT authenticated source for this IPA. Confirm bundle ID, revision, and binary identifiers before patching."
         } catch {
             return "Repository lookup failed: "+error.localizedDescription
         }
