@@ -34,7 +34,7 @@ enum NyxianCompilerProbe {
         guard let sdk = create(kCFAllocatorDefault, sdkPath as CFURL) else {
             return "SDK directory found, but Nyxian rejected initialization."
         }
-        defer { CFRelease(sdk) }
+        defer { Unmanaged<AnyObject>.fromOpaque(sdk).release() }
         let copy = unsafeBitCast(dlsym(handle, "CCSDKCopyVersion")!, to: CopyVersion.self)
         let version = copy(sdk)?.takeRetainedValue() as String? ?? "unknown"
         return "Nyxian SDK initialized: " + version + ". Compiler job APIs found. Native compilation/linking still requires a configured job and device smoke tests."
