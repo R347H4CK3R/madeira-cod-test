@@ -1,0 +1,35 @@
+name: Nyxian native compiler build verification
+on:
+  push:
+    paths:
+      - '.github/workflows/nyxian-compiler-build.yml'
+  workflow_dispatch:
+jobs:
+  compiler:
+    runs-on: macos-latest
+    timeout-minutes: 180
+    steps:
+      - name: Fetch pinned upstream source and dependencies
+        run: |
+          git clone --recursive --depth 1 https://github.com/emexlab/Nyxian.git upstream
+          cd upstream
+          git rev-parse HEAD | tee ../UPSTREAM-COMMIT.txt
+          git submodule status | tee ../SUBMODULES.txt
+      - name: Install toolchain dependencies
+        run: brew install ldid dpkg libarchive
+      - name: Build upstream compiler and app
+        working-directory: upstream
+        run: CHECK_DEPS=0 make all
+      - name: Check produced IPA
+        run: |
+          test -s upstream/Nyxian.ipa
+          unzip -t upstream/Nyxian.ipa
+          unzip -l upstream/Nyxian.ipa | grep -E '(CoreCompiler|Payload/.+\.app/)'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Nyxian-native-compiler-source-build
+          path: |
+            upstream/Nyxian.ipa
+            UPSTREAM-COMMIT.txt
+            SUBMODULES.txt
+          if-no-files-found: error
