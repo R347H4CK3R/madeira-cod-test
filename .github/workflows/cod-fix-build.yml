@@ -3,7 +3,7 @@ name: Madeira COD Test IPA
 on:
   workflow_dispatch:
   push:
-    branches: ['fix/cod-1938090-ipa-*']
+    branches: ['fix/cod-1938090-ipa-*', 'fix/live-diagnostics-*']
     paths:
       - '.github/workflows/cod-fix-build.yml'
       - 'build/**'
