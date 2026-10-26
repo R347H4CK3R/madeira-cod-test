@@ -1,4 +1,4 @@
-name: LocalCoder isolated IPA build
+name: PocketForge unsigned iOS build
 on:
   push:
     branches:
@@ -19,7 +19,7 @@ jobs:
       - name: Generate project
         run: xcodegen generate
       - name: Compile WebShell template
-        run: xcodebuild -project LocalCoder.xcodeproj -scheme WebShell -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath shellbuild CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project PocketForge.xcodeproj -scheme WebShell -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath shellbuild CODE_SIGNING_ALLOWED=NO build
       - name: Bundle executable template
         run: |
           mkdir -p temp/Payload
@@ -28,7 +28,7 @@ jobs:
       - name: Regenerate project with template
         run: xcodegen generate
       - name: Compile app
-        run: xcodebuild -project LocalCoder.xcodeproj -scheme LocalCoder -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+        run: xcodebuild -project PocketForge.xcodeproj -scheme PocketForge -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
       - name: Bundle Nyxian prebuilt compiler frameworks
         run: |
           set -euo pipefail
@@ -36,7 +36,7 @@ jobs:
           mkdir -p /tmp/nyxian-release
           unzip -q /tmp/Nyxian.ipa -d /tmp/nyxian-release
           SOURCE=/tmp/nyxian-release/Payload/Nyxian.app
-          DEST=build/Build/Products/Release-iphoneos/LocalCoder.app
+          DEST=build/Build/Products/Release-iphoneos/PocketForge.app
           mkdir -p "$DEST/Frameworks" "$DEST/NyxianResources"
           for fw in CoreCompiler MobileDevelopmentKit OpenSSL; do
             cp -R "$SOURCE/Frameworks/$fw.framework" "$DEST/Frameworks/"
@@ -50,11 +50,11 @@ jobs:
       - name: Package unsigned IPA
         run: |
           mkdir -p dist/Payload
-          cp -R build/Build/Products/Release-iphoneos/LocalCoder.app dist/Payload/
-          cd dist && zip -q -r LocalCoder-unsigned.ipa Payload
-          unzip -t LocalCoder-unsigned.ipa
+          cp -R build/Build/Products/Release-iphoneos/PocketForge.app dist/Payload/
+          cd dist && zip -q -r PocketForge-unsigned.ipa Payload
+          unzip -t PocketForge-unsigned.ipa
       - uses: actions/upload-artifact@v4
         with:
-          name: LocalCoder-unsigned-IPA
-          path: dist/LocalCoder-unsigned.ipa
+          name: PocketForge-unsigned-IPA
+          path: dist/PocketForge-unsigned.ipa
           if-no-files-found: error
