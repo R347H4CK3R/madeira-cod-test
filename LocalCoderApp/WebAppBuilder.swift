@@ -34,7 +34,7 @@ import ZIPFoundation
             plist["CFBundleIdentifier"] = bundleID
             plist["CFBundleDisplayName"] = appName
             guard plist.write(to:manifest,atomically:true) else { throw CocoaError(.fileWriteUnknown) }
-            let page = app.appendingPathComponent("www/index.html")
+            let page = app.appendingPathComponent("index.html")
             try fm.createDirectory(at:page.deletingLastPathComponent(),withIntermediateDirectories:true)
             try html.write(to:page,atomically:true,encoding:.utf8)
             let signature = app.appendingPathComponent("_CodeSignature")
