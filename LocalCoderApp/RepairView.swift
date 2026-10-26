@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
     var proposedFix = ""
     var sourceAvailable = false
     var repairedIPA: URL?
+    var automaticStatus = "Not run"
     private var archiveURL: URL?
     func importFile(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
@@ -87,6 +88,23 @@ import UniformTypeIdentifiers
         lines.append(sourceAvailable ? "Source files appear in archive, but must be matched to an editable project before recompilation." : "Compiled IPA normally contains no recoverable original Swift/Objective-C source. Automatic source patching requires the source project.")
         findings = lines.joined(separator:"\n")
     }
+    func automaticRepair() {
+        repairedIPA = nil
+        guard archiveURL != nil else {
+            automaticStatus = "Import an IPA to attempt automatic repair."
+            createRepairPlan()
+            return
+        }
+        createRepairPlan()
+        do {
+            let (result, message) = try SafeIPARepair.repairMissingDisplayName(archiveURL!)
+            repairedIPA = result
+            automaticStatus = "Validated metadata repair completed. " + message
+        } catch {
+            automaticStatus = "No safe automatic patch applicable: " + error.localizedDescription
+                + ". Diagnostic recommendations are available below. Original IPA was not modified."
+        }
+    }
     func repairSupportedIssue() {
         guard let archiveURL else { proposedFix = "Import an IPA first."; return }
         do {
@@ -152,6 +170,8 @@ struct RepairView: View {
                     }
                     TextField("What happened?",text:$model.issue,axis:.vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
+                    Button("Auto-diagnose, repair & export when possible") { model.automaticRepair() }.buttonStyle(.borderedProminent)
+                    Text(model.automaticStatus).font(.caption).textSelection(.enabled)
                     Button("Repair missing app display name & rebuild unsigned IPA") { model.repairSupportedIssue() }.buttonStyle(.bordered)
                     if let repaired = model.repairedIPA {
                         ShareLink(item: repaired) { Label("Export repaired unsigned IPA",systemImage:"square.and.arrow.up") }
