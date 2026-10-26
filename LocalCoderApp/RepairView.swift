@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
     var sourceAvailable = false
     var repairedIPA: URL?
     var automaticStatus = "Not run"
+    var sourceDiscoveryReport = "No source search performed."
     private var archiveURL: URL?
     func importFile(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
@@ -25,6 +26,7 @@ import UniformTypeIdentifiers
                 archiveURL = copy
                 ipaName = url.lastPathComponent
                 inspect()
+                discoverSource()
             } else {
                 let data = try Data(contentsOf: url)
                 guard data.count < 5_000_000, let text = String(data:data,encoding:.utf8) else {
@@ -87,6 +89,10 @@ import UniformTypeIdentifiers
         if !issue.isEmpty { lines.append("Reported symptoms: " + issue) }
         lines.append(sourceAvailable ? "Source files appear in archive, but must be matched to an editable project before recompilation." : "Compiled IPA normally contains no recoverable original Swift/Objective-C source. Automatic source patching requires the source project.")
         findings = lines.joined(separator:"\n")
+    }
+    func discoverSource() {
+        guard let archiveURL else { sourceDiscoveryReport = "Import an IPA or ZIP first."; return }
+        sourceDiscoveryReport = SourceDiscovery.inspect(archiveURL)
     }
     func automaticRepair() {
         repairedIPA = nil
@@ -169,6 +175,8 @@ struct RepairView: View {
                         Text("No attachments selected").font(.caption).foregroundStyle(.secondary)
                     }
                     TextField("What happened?",text:$model.issue,axis:.vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
+                    Button("Find source automatically") { model.discoverSource() }.buttonStyle(.bordered)
+                    Text(model.sourceDiscoveryReport).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
                     Button("Auto-diagnose, repair & export when possible") { model.automaticRepair() }.buttonStyle(.borderedProminent)
                     Text(model.automaticStatus).font(.caption).textSelection(.enabled)
