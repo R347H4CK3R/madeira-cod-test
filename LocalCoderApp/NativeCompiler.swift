@@ -12,6 +12,15 @@ import UniformTypeIdentifiers
     var source = "import SwiftUI\n@main struct NewNativeApp: App { var body: some Scene { WindowGroup { Text(\"Hello iPhone\") } } }"
     var status = "Native code can be edited and exported offline. LocalCoder has no embedded Swift/Clang compiler."
     var output: URL?
+    var compilerReport = "Not checked"
+    func checkNativeCompiler() {
+        let roots = [Bundle.main.privateFrameworksURL, Bundle.main.sharedFrameworksURL]
+        let compiler = roots.compactMap { $0?.appendingPathComponent("CoreCompiler.framework/CoreCompiler") }
+            .contains { FileManager.default.fileExists(atPath: $0.path) }
+        let sdk = Bundle.main.url(forResource: "SDK", withExtension: nil) != nil
+        let status = compiler ? "CoreCompiler binary detected; compilation still requires ABI and smoke-test validation." : "CoreCompiler is not embedded."
+        compilerReport = status + (sdk ? " SDK resource candidate detected." : " No native SDK resource bundled.") + " Native compile unavailable until both are validated."
+    }
     func resetTemplate() {
         switch language {
         case .swift:
@@ -64,6 +73,8 @@ struct NativeCompilerView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 Text(project.status).font(.caption).foregroundStyle(.secondary)
+                Button("Check local native toolchain") { project.checkNativeCompiler() }.buttonStyle(.bordered)
+                Text(project.compilerReport).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 HStack {
                     Button("Export native project") { project.exportProject() }.buttonStyle(.borderedProminent)
                     if let output=project.output { ShareLink(item:output) { Label("Save", systemImage:"square.and.arrow.up") } }
