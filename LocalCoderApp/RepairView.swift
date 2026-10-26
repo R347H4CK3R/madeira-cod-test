@@ -123,9 +123,9 @@ import UniformTypeIdentifiers
         <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
         <style>body{font-family:-apple-system,system-ui;background:#111827;color:#f9fafb;padding:24px}
         .notice{background:#273449;padding:16px;border-radius:14px}button{padding:12px;border-radius:9px}</style></head>
-        <body><h1>\\(cleanName)</h1><div class="notice"><h2>Fresh replacement project</h2>
+        <body><h1>\(cleanName)</h1><div class="notice"><h2>Fresh replacement project</h2>
         <p>The original executable source was not available. This is a new functioning app shell, not a recovered copy of the original app.</p>
-        <h3>Requested behavior / issue</h3><p>\\(escaped)</p>
+        <h3>Requested behavior / issue</h3><p>\(escaped)</p>
         <p>Unimplemented original features must be recreated from requirements or authorized source code.</p></div></body></html>
         """
         builder.exportIPA()
@@ -137,6 +137,7 @@ import UniformTypeIdentifiers
     func automaticRepair() {
         repairedIPA = nil
         reconstructed = false
+        automaticStatus = "Inspecting imported archive and diagnostic evidence…"
         guard archiveURL != nil else {
             automaticStatus = "Import an IPA to attempt automatic repair."
             createRepairPlan()
@@ -148,8 +149,9 @@ import UniformTypeIdentifiers
             repairedIPA = result
             automaticStatus = "Validated metadata repair completed. " + message
         } catch {
-            automaticStatus = "No safe native/bundle repair: " + error.localizedDescription + ". Building a separate replacement shell."
+            let reason = error.localizedDescription
             reconstructApp()
+            automaticStatus = "Original IPA could not be safely patched (" + reason + "). " + automaticStatus
         }
     }
     func repairSupportedIssue() {
@@ -165,7 +167,7 @@ import UniformTypeIdentifiers
         let l = (logText + " " + issue).lowercased()
         if l.contains("dyld") || l.contains("symbol not found") {
             proposedFix = "Likely dynamic library or symbol-loading issue. Inspect embedded frameworks, architectures and load commands. A source/build configuration or linker repair may be necessary."
-        } else if l.contains("jetsam") || l.contains("memory") {
+        } else if l.contains("jetsam") || l.contains("out of memory") || l.contains("memorystatus") {
             proposedFix = "Likely memory pressure. Profile allocation, reduce peak usage, and inspect device memory reports. Source changes and repeat testing are required."
         } else if l.contains("code signature") {
             proposedFix = "Code-signature validation issue. Repackaging invalidates signatures; a separately signed installation build is required. No automatic signing performed."
