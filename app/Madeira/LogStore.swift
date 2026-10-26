@@ -137,6 +137,7 @@ final class LogStore: ObservableObject {
 
     /// Called from tail-file callback (background queue) or C callback.
     private func handleRawLine(_ raw: String) {
+        CrashTelemetry.shared.observe(raw)
         stateLock.lock(); let suppressed = displaySuppressed; stateLock.unlock()
         if suppressed { return }
         // Filter out lines we never want in UI (excessive byte spam, etc.)
@@ -309,5 +310,147 @@ final class LogStore: ObservableObject {
                 handle.closeFile()
             }
         }
+    }
+}
+
+
+// Minimal pre-crash GitHub telemetry. GitHub credentials are never stored in source
+// or UserDefaults. Only fixed event identifiers, not file paths or arbitrary log
+// content, are uploaded to issue #1. Opt-in through the Diagnostics UI.
+import Security
+
+final class CrashTelemetry {
+    static let shared = CrashTelemetry()
+    private let queue = DispatchQueue(label: "madeira.telemetry")
+    private let keychainService = "com.madeira.github.diagnostics"
+    private let keychainAccount = "github-issue-token"
+    private let enabledKey = "MADEIRA_CRASH_TELEMETRY_OPT_IN"
+    private var counts: [String: Int] = [:]
+    private var lastUpload = Date.distantPast
+    private var sending = false
+    private var scheduled = false
+
+    var enabled: Bool { UserDefaults.standard.bool(forKey: enabledKey) }
+
+    func setEnabled(_ value: Bool) {
+        UserDefaults.standard.set(value, forKey: enabledKey)
+        if value { queue.async { self.scheduleFlush() } }
+    }
+
+    func saveToken(_ token: String) -> Bool {
+        let value = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return false }
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: keychainService,
+                                    kSecAttrAccount as String: keychainAccount]
+        SecItemDelete(query as CFDictionary)
+        var attrs = query
+        attrs[kSecValueData as String] = Data(value.utf8)
+        attrs[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(attrs as CFDictionary, nil) == errSecSuccess
+    }
+
+    func clearToken() {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
+                       kSecAttrService as String: keychainService,
+                       kSecAttrAccount as String: keychainAccount] as CFDictionary)
+        setEnabled(false)
+    }
+
+    private func token() -> String? {
+        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
+                                    kSecAttrService as String: keychainService,
+                                    kSecAttrAccount as String: keychainAccount,
+                                    kSecReturnData as String: true,
+                                    kSecMatchLimit as String: kSecMatchLimitOne]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    // Whitelist only. No arbitrary runtime text, IP addresses, usernames,
+    // filesystem paths, Steam credentials or memory contents leave the device.
+    private static let signatures: [(String, String)] = [
+        ("UNHANDLED", "unhandled-exception"),
+        ("c000001d", "illegal-instruction"),
+        ("0xC000001D", "illegal-instruction"),
+        ("SDL3.dll", "sdl3-loader-event"),
+        ("c000007b", "bad-image-format"),
+        ("0xC000007B", "bad-image-format"),
+        ("store-noalias", "jit-alias-store-fault"),
+        ("pool-rip-fix", "jit-pool-rip-redirect"),
+        ("wrong ISA", "instruction-architecture-mismatch"),
+        ("Failed to mprotect last page of code buffer", "fex-mprotect"),
+        ("[no-footprint] pool applied=false", "pool-footprint-denied"),
+        ("no hole fits a", "jit-pool-fragmentation"),
+        ("jetsam", "memory-pressure"),
+        ("INVALID_ADDRESS", "invalid-address"),
+        ("[freeze]", "freeze-detector")
+    ]
+
+    func observe(_ raw: String) {
+        guard enabled else { return }
+        let matches = Self.signatures.filter { raw.contains($0.0) }.map { $0.1 }
+        guard !matches.isEmpty else { return }
+        queue.async {
+            for event in Set(matches) { self.counts[event, default: 0] += 1 }
+            // Persist a privacy-filtered pre-crash breadcrumb immediately.
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let url = docs.appendingPathComponent("madeira-crash-events.jsonl")
+            let timestamp = ISO8601DateFormatter().string(from: Date())
+            for event in Set(matches) {
+                let line = "{\"at\":\"\(timestamp)\",\"event\":\"\(event)\"}\n"
+                if let bytes = line.data(using: .utf8) {
+                    if FileManager.default.fileExists(atPath: url.path),
+                       let f = try? FileHandle(forWritingTo: url) {
+                        f.seekToEndOfFile(); f.write(bytes); f.closeFile()
+                    } else { try? bytes.write(to: url, options: .atomic) }
+                }
+            }
+            self.scheduleFlush()
+        }
+    }
+
+    private func scheduleFlush() {
+        guard !scheduled, !sending else { return }
+        scheduled = true
+        queue.asyncAfter(deadline: .now() + 30) {
+            self.scheduled = false
+            self.flush()
+        }
+    }
+
+    func uploadNow() { queue.async { self.flush() } }
+
+    private func flush() {
+        guard enabled, !sending, !counts.isEmpty, let credential = token() else { return }
+        guard Date().timeIntervalSince(lastUpload) >= 30 else { scheduleFlush(); return }
+        let snapshot = counts
+        counts.removeAll()
+        sending = true
+        lastUpload = Date()
+        var req = URLRequest(url: URL(string:
+            "https://api.github.com/repos/R347H4CK3R/madeira-cod-test/issues/1/comments")!)
+        req.httpMethod = "POST"
+        req.setValue("Bearer " + credential, forHTTPHeaderField: "Authorization")
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 15
+        let items = snapshot.keys.sorted().map { "- \($0): \(snapshot[$0] ?? 0)" }.joined(separator: "\n")
+        let body = "Madeira opt-in pre-crash telemetry (aggregate identifiers only)\n\n" + items
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["body": body])
+        URLSession.shared.dataTask(with: req) { _, response, error in
+            self.queue.async {
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if error != nil || !(200...299).contains(code) {
+                    for (name, count) in snapshot { self.counts[name, default: 0] += count }
+                    // Do not retry forever on invalid credentials.
+                    if code == 401 || code == 403 { self.setEnabled(false) }
+                }
+                self.sending = false
+                if !self.counts.isEmpty && self.enabled { self.scheduleFlush() }
+            }
+        }.resume()
     }
 }

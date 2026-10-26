@@ -1,0 +1,110 @@
+name: LiveContainer + Patched SideStore Memory+ IPA
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/live-diagnostics-20261025']
+    paths: ['.github/workflows/livecontainer-sidestore-memoryplus.yml']
+permissions:
+  contents: read
+jobs:
+  combined:
+    runs-on: macos-26
+    timeout-minutes: 180
+    steps:
+      - uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: '26.2'
+      - name: Prepare build dependencies
+        run: brew install ldid xcbeautify
+      - name: Check out official LiveContainer
+        run: git clone --depth 1 --recurse-submodules https://github.com/LiveContainer/LiveContainer.git livecontainer
+      - name: Check out SideStore and pin Memory+ capability patch
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch develop --recurse-submodules https://github.com/SideStore/SideStore.git sidestore
+          git -C sidestore/Dependencies/SideSign fetch https://github.com/playportdev/SideSign.git 9d89dac1d391c934e5c69be1fadbb090d9a7f944
+          git -C sidestore/Dependencies/SideSign checkout --detach 9d89dac1d391c934e5c69be1fadbb090d9a7f944
+          test "$(git -C sidestore/Dependencies/SideSign rev-parse HEAD)" = 9d89dac1d391c934e5c69be1fadbb090d9a7f944
+          git -C livecontainer rev-parse HEAD > source-livecontainer.txt
+          git -C sidestore rev-parse HEAD > source-sidestore.txt
+      - name: Build patched SideStore
+        working-directory: sidestore
+        run: |
+          set -o pipefail
+          python3 scripts/ci/workflow.py build 2>&1 | tee ../sidestore-build.log
+          test -s SideStore.ipa
+          unzip -t SideStore.ipa | tail -n 3
+      - name: Build LiveContainer archive
+        working-directory: livecontainer
+        env:
+          archive_path: archive
+          scheme: LiveContainer
+        run: |
+          set -o pipefail
+          xcodebuild archive -archivePath "$archive_path" -scheme "$scheme" -project LiveContainer.xcodeproj -sdk iphoneos -arch arm64 -configuration Release CODE_SIGNING_ALLOWED=NO 2>&1 | tee ../livecontainer-build.log
+      - name: Integrate locally patched SideStore into LiveContainer
+        working-directory: livecontainer
+        env:
+          archive_path: archive
+          scheme: LiveContainer
+        run: |
+          set -euo pipefail
+          # Official packager normally downloads upstream SideStore. Replace ONLY
+          # that download line with our locally built, SHA-pinned SideStore.
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/build_github.sh')
+          s=p.read_text()
+          needle='wget https://github.com/LiveContainer/SideStore/releases/download/nightly/SideStore.ipa'
+          assert s.count(needle)==1, 'Official integration script changed; fail safely'
+          s=s.replace(needle,'cp ../../sidestore/SideStore.ipa SideStore.ipa')
+          Path('.github/build_memoryplus.sh').write_text(s)
+          PY
+          bash .github/build_memoryplus.sh 2>&1 | tee ../combined-build.log
+          test -s 'LiveContainer+SideStore.ipa'
+          unzip -t 'LiveContainer+SideStore.ipa' | tail -n 4
+          unzip -p 'LiveContainer+SideStore.ipa' Payload/LiveContainer.app/Info.plist > /tmp/lc-merged-info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' /tmp/lc-merged-info.plist
+          # Assert that the merged payload still requests the exact SideStore
+          # App Group. Info.plist metadata alone DOES NOT grant the entitlement.
+          python3 - <<'PY'
+          import plistlib,zipfile,json
+          path='LiveContainer+SideStore.ipa'
+          with zipfile.ZipFile(path) as z:
+              main=plistlib.loads(z.read('Payload/LiveContainer.app/Info.plist'))
+              side=plistlib.loads(z.read('Payload/LiveContainer.app/Frameworks/SideStoreApp.framework/Info.plist'))
+              groups=main.get('ALTAppGroups',[])
+              assert 'group.com.SideStore.SideStore' in groups, 'Missing embedded SideStore ALTAppGroups declaration'
+              assert 'SideStoreApp.framework' in '/'.join(z.namelist()), 'Missing SideStore framework'
+              report={'status':'package-validated-only','bundle_id':main['CFBundleIdentifier'],
+                      'embedded_sidestore_bundle_id':side['CFBundleIdentifier'],
+                      'required_app_group':'group.com.SideStore.SideStore',
+                      'group_declared_in_metadata':True,
+                      'authorization_verified':False,
+                      'installation_tested':False,
+                      'signing_requirement':'Provisioning profile and installed code signature MUST both grant com.apple.security.application-groups containing the actual TeamID-qualified, signing-service-mapped App Group. Re-sign all nested code and extensions. Test containerURL(forSecurityApplicationGroupIdentifier:) before launching embedded SideStore.',
+                      'warning':'No profile embedded in this unsigned artifact; do not use Nuke SideStore to fix a signing failure.'}
+              with open('signing-preflight.json','w') as out:json.dump(report,out,indent=2)
+          PY
+          shasum -a 256 'LiveContainer+SideStore.ipa' > 'LiveContainer+SideStore.ipa.sha256'
+      - name: Upload merged test IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: LiveContainer-SideStore-MemoryPlus-Experimental
+          path: |
+            livecontainer/LiveContainer+SideStore.ipa
+            livecontainer/LiveContainer+SideStore.ipa.sha256
+            livecontainer/signing-preflight.json
+          if-no-files-found: error
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Combined-MemoryPlus-Build-Evidence
+          path: |
+            source-livecontainer.txt
+            source-sidestore.txt
+            sidestore-build.log
+            livecontainer-build.log
+            combined-build.log
+          if-no-files-found: warn

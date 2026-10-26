@@ -1,0 +1,45 @@
+name: Madeira Diagnostic Triage
+on:
+  issue_comment:
+    types: [created]
+permissions:
+  issues: write
+jobs:
+  classify:
+    if: ${{ github.event.issue.number == 1 && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Classify sanitized device events
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ github.event.comment.body }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os,re,subprocess
+          body=os.environ.get('COMMENT','')
+          if not body.startswith('Madeira opt-in pre-crash telemetry (aggregate identifiers only)'):
+              raise SystemExit(0)
+          allowed={
+              'illegal-instruction':'JIT dispatch / instruction architecture',
+              'invalid-address':'memory alias / stale mapping',
+              'fex-mprotect':'16 KiB page protection',
+              'sdl3-loader-event':'Steam SDL3 architecture / dependency',
+              'pool-footprint-denied':'jetsam memory accounting',
+              'jit-pool-fragmentation':'JIT virtual address fragmentation',
+              'memory-pressure':'jetsam / low available RAM',
+              'unhandled-exception':'guest exception',
+              'freeze-detector':'stalled guest or main thread'
+          }
+          counts={}
+          for kind,num in re.findall(r'^- ([a-z0-9-]+): (\d+)$',body,re.M):
+              if kind in allowed: counts[kind]=min(100000,counts.get(kind,0)+int(num))
+          if not counts: raise SystemExit(0)
+          order=sorted(counts,key=lambda k:-counts[k])
+          lead=order[0]
+          report=("Automated diagnostic classification (not an applied fix):\n\n"
+                  + "\n".join(f"- {allowed[k]}: {counts[k]} event(s)" for k in order)
+                  + f"\n\nHighest-count category: **{allowed[lead]}**. Confirm with device crash traces and regression tests before patching.")
+          subprocess.run(['gh','issue','comment','1','--repo',os.environ['REPO'],'--body',report],check=True)
+          PY

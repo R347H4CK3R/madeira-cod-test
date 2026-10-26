@@ -1,0 +1,56 @@
+name: SideStore Memory+ Refresh Fix Test
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/live-diagnostics-20261025']
+    paths: ['.github/workflows/sidestore-memory-fix.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - name: Checkout SideStore source
+        run: |
+          git clone --branch develop --depth 1 --recurse-submodules https://github.com/SideStore/SideStore.git sidestore
+      - name: Pin SideSign entitlement capability fix
+        working-directory: sidestore
+        run: |
+          set -euo pipefail
+          git -C Dependencies/SideSign fetch https://github.com/playportdev/SideSign.git 9d89dac1d391c934e5c69be1fadbb090d9a7f944
+          git -C Dependencies/SideSign checkout --detach 9d89dac1d391c934e5c69be1fadbb090d9a7f944
+          test "$(git -C Dependencies/SideSign rev-parse HEAD)" = "9d89dac1d391c934e5c69be1fadbb090d9a7f944"
+          echo 'Memory capability patch pinned'
+      - name: Install tools
+        run: brew install ldid xcbeautify
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1.6.0
+        with:
+          xcode-version: '26.2'
+      - name: Build unsigned SideStore test IPA
+        working-directory: sidestore
+        run: |
+          set -o pipefail
+          python3 scripts/ci/workflow.py build 2>&1 | tee sidestore-memory-build.log
+      - name: Save diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideStore-Memory-Build-Logs
+          path: sidestore/sidestore-memory-build.log
+          if-no-files-found: warn
+      - name: Validate and upload IPA
+        working-directory: sidestore
+        run: |
+          test -s SideStore.ipa
+          unzip -t SideStore.ipa | tail -n 3
+          shasum -a 256 SideStore.ipa > SideStore.ipa.sha256
+      - name: Upload experimental SideStore IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SideStore-MemoryPlus-Experimental
+          path: |
+            sidestore/SideStore.ipa
+            sidestore/SideStore.ipa.sha256
+          if-no-files-found: error
