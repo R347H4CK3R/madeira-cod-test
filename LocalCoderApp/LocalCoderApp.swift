@@ -16,7 +16,31 @@ import UIKit
     var attachments = AttachmentStore()
     var nativeProject = NativeProjectWorkspace()
     var nativeDraftReady = false
+    var webDraft = ""
+    var webPreviewReady = false
     private var session: LanguageModelSession?
+    func generateWebPreview() async {
+        let request = prompt.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !request.isEmpty && !busy else { error = "Describe an app to run."; return }
+        guard SystemLanguageModel.default.isAvailable else { error = "On-device AI unavailable."; return }
+        busy = true
+        defer { busy = false }
+        do {
+            let generator = LanguageModelSession(instructions: "Generate a complete, self-contained HTML5 application with CSS and JavaScript. Output only HTML source beginning with <!doctype html>. No remote dependencies. No markdown formatting.")
+            var result = try await generator.respond(to: request).content
+            if result.hasPrefix("```") {
+                let parts = result.components(separatedBy:.newlines)
+                if parts.count >= 3 { result = parts.dropFirst().dropLast().joined(separator:"\n") }
+            }
+            guard result.lowercased().contains("<html"), result.lowercased().contains("</html>") else {
+                error = "Model did not produce complete HTML. Try again."; return
+            }
+            webDraft = result
+            webPreviewReady = true
+            lines.append("AI: Generated a temporary HTML app ready for in-app Run. Session storage is not persistent.")
+            error = ""
+        } catch { error = "App generation failed: " + error.localizedDescription }
+    }
     func generateNativeProject() async {
         let request = prompt.trimmingCharacters(in:.whitespacesAndNewlines)
         guard !request.isEmpty, !busy else { error = "Describe the native iOS app first."; return }
@@ -107,6 +131,7 @@ struct MainScreen: View {
     @State private var inspector = ArchiveInspector()
     @State private var importFile = false
     @State private var importChatAttachment = false
+    @State private var showingChatPreview = false
     var body: some View {
         TabView {
             NavigationStack {
@@ -114,6 +139,12 @@ struct MainScreen: View {
                     ScrollView { LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(brain.lines.indices, id: \.self) { index in Text(brain.lines[index]).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     }.padding() }.scrollDismissesKeyboard(.interactively)
+                    if brain.webPreviewReady {
+                        HStack {
+                            Button("Run temporary app") { showingChatPreview = true }.buttonStyle(.borderedProminent)
+                            Button("Clear preview") { brain.webDraft = ""; brain.webPreviewReady = false }
+                        }.padding(.horizontal)
+                    }
                     if brain.nativeDraftReady {
                         VStack(alignment:.leading,spacing:8) {
                             Text("Native SwiftUI project generated").font(.headline)
@@ -149,10 +180,12 @@ struct MainScreen: View {
                         TextField("Describe an app or paste an error", text: $brain.prompt, axis: .vertical)
                         Button("Send") { Task { await brain.send() } }.disabled(brain.busy)
                         Menu {
+                            Button("Generate runnable web app",systemImage:"play.rectangle") { Task { await brain.generateWebPreview() } }
                             Button("Generate native SwiftUI source",systemImage:"curlybraces") { Task { await brain.generateNativeProject() } }
                             Button("Check native compiler",systemImage:"checkmark.shield") { brain.nativeProject.checkNativeCompiler() }
                         } label: { Image(systemName:"hammer.circle").font(.title2).accessibilityLabel("App build tools") }
                     }.padding()
+                    .sheet(isPresented:$showingChatPreview) { EphemeralAppPreview(html:brain.webDraft) }
                     .sheet(isPresented: $importChatAttachment) {
                         UnrestrictedFilePicker(onPick: { url in
                             importChatAttachment = false
@@ -162,7 +195,7 @@ struct MainScreen: View {
                             brain.attachments.error = message
                         })
                     }
-                }.navigationTitle("LocalCoder AI")
+                }.navigationTitle("PocketForge AI")
             }.tabItem { Label("AI Chat", systemImage: "bubble.left.and.bubble.right") }
             NavigationStack {
                 ScrollView {
