@@ -395,7 +395,7 @@ final class CrashTelemetry {
             let url = docs.appendingPathComponent("madeira-crash-events.jsonl")
             let timestamp = ISO8601DateFormatter().string(from: Date())
             for event in Set(matches) {
-                let line = "{\\"at\\":\\"\\(timestamp)\\",\\"event\\":\\"\\(event)\\"}\\n"
+                let line = "{\"at\":\"\(timestamp)\",\"event\":\"\(event)\"}\n"
                 if let bytes = line.data(using: .utf8) {
                     if FileManager.default.fileExists(atPath: url.path),
                        let f = try? FileHandle(forWritingTo: url) {
@@ -432,8 +432,8 @@ final class CrashTelemetry {
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 15
-        let items = snapshot.keys.sorted().map { "- \\($0): \\(snapshot[$0] ?? 0)" }.joined(separator: "\\n")
-        let body = "Madeira opt-in pre-crash telemetry (aggregate identifiers only)\\n\\n" + items
+        let items = snapshot.keys.sorted().map { "- \($0): \(snapshot[$0] ?? 0)" }.joined(separator: "\n")
+        let body = "Madeira opt-in pre-crash telemetry (aggregate identifiers only)\n\n" + items
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["body": body])
         URLSession.shared.dataTask(with: req) { _, response, error in
             self.queue.async {
