@@ -10,7 +10,7 @@ enum NyxianCompilerProbe {
     typealias CreateJob = @convention(c) (CFAllocator?, UInt8, CFArray, CFArray, CFURL) -> UnsafeMutableRawPointer?
     typealias ExecuteJob = @convention(c) (UnsafeMutableRawPointer, UnsafeMutablePointer<Unmanaged<CFArray>?>?, UnsafeMutablePointer<Unmanaged<CFString>?>?) -> Bool
 
-    static func inspect() -> String {
+    static func inspect(sdkURL: URL? = nil) -> String {
         guard let frameworks = Bundle.main.privateFrameworksURL else { return "Private frameworks unavailable" }
         let dylib = frameworks.appendingPathComponent("CoreCompiler.framework/CoreCompiler")
         guard let handle = dlopen(dylib.path, RTLD_NOW | RTLD_LOCAL) else {
@@ -21,7 +21,7 @@ enum NyxianCompilerProbe {
         let missing = names.filter { dlsym(handle, $0) == nil }
         guard missing.isEmpty else { return "Missing compiler entry points: " + missing.joined(separator: ", ") }
         let root = Bundle.main.bundleURL.appendingPathComponent("NyxianResources")
-        let locations = [
+        let locations = (sdkURL.map { [$0] } ?? []) + [
             root.appendingPathComponent("SDK", isDirectory: true),
             root.appendingPathComponent("SDKs", isDirectory: true),
             root.appendingPathComponent("iPhoneOS.sdk", isDirectory: true)
