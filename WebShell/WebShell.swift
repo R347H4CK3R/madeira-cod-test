@@ -8,7 +8,7 @@ struct ShellView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let view = WKWebView()
         view.isOpaque = false
-        if let url = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "www") {
+        if let url = Bundle.main.url(forResource: "index", withExtension: "html") {
             view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
         return view
