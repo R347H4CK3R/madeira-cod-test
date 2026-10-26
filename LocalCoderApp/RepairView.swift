@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
     var issue = ""
     var logText = ""
     var ipaName = ""
+    var logName = ""
     var findings = "Import an IPA and optionally a diagnostic log. Describe what went wrong."
     var proposedFix = ""
     var sourceAvailable = false
@@ -18,6 +19,7 @@ import UniformTypeIdentifiers
             if ext == "ipa" || ext == "zip" {
                 let copy = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "." + ext)
                 try FileManager.default.copyItem(at: url, to: copy)
+                if let old = archiveURL { try? FileManager.default.removeItem(at: old) }
                 archiveURL = copy
                 ipaName = url.lastPathComponent
                 inspect()
@@ -27,9 +29,23 @@ import UniformTypeIdentifiers
                     findings = "Log must be UTF-8 and smaller than 5 MB.";return
                 }
                 logText = text
+                logName = url.lastPathComponent
                 inspect()
             }
         } catch { findings = "Import error: " + error.localizedDescription }
+    }
+    func removeIPA() {
+        if let old = archiveURL { try? FileManager.default.removeItem(at: old) }
+        archiveURL = nil
+        ipaName = ""
+        proposedFix = ""
+        inspect()
+    }
+    func removeLog() {
+        logText = ""
+        logName = ""
+        proposedFix = ""
+        inspect()
     }
     func inspect() {
         var lines:[String] = []
@@ -96,8 +112,35 @@ struct RepairView: View {
                 VStack(alignment:.leading,spacing:12) {
                     Text("Crash & IPA Repair").font(.title2).bold()
                     Text("Import an IPA, crash log, or both. Describe the issue when no log is available.").font(.footnote).foregroundStyle(.secondary)
-                    Button("Import IPA or diagnostic log") { picker = true }.buttonStyle(.borderedProminent)
-                    Text(model.ipaName.isEmpty ? "No IPA selected" : model.ipaName).font(.caption)
+                    Menu {
+                        Button("Add IPA or ZIP", systemImage:"archivebox") { picker = true }
+                        Button("Add diagnostic log", systemImage:"doc.text") { picker = true }
+                        Button("Add source or other file", systemImage:"folder") { picker = true }
+                    } label: {
+                        Label("Add attachment", systemImage:"plus.circle.fill")
+                    }.buttonStyle(.borderedProminent)
+                    if !model.ipaName.isEmpty || !model.logName.isEmpty {
+                        ScrollView(.horizontal) {
+                            HStack {
+                                if !model.ipaName.isEmpty {
+                                    HStack {
+                                        Image(systemName:"archivebox")
+                                        Text(model.ipaName).lineLimit(1)
+                                        Button { model.removeIPA() } label: { Image(systemName:"xmark.circle.fill") }
+                                    }.padding(8).background(.gray.opacity(0.2)).clipShape(Capsule())
+                                }
+                                if !model.logName.isEmpty {
+                                    HStack {
+                                        Image(systemName:"doc.text")
+                                        Text(model.logName).lineLimit(1)
+                                        Button { model.removeLog() } label: { Image(systemName:"xmark.circle.fill") }
+                                    }.padding(8).background(.gray.opacity(0.2)).clipShape(Capsule())
+                                }
+                            }.font(.caption)
+                        }
+                    } else {
+                        Text("No attachments selected").font(.caption).foregroundStyle(.secondary)
+                    }
                     TextField("What happened?",text:$model.issue,axis:.vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
                     Text("Findings").font(.headline)
