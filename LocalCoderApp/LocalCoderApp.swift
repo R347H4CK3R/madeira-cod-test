@@ -39,7 +39,7 @@ import UIKit
             webPreviewReady = true
             lines.append("AI: Generated a temporary HTML app ready for in-app Run. Session storage is not persistent.")
             error = ""
-        } catch { error = "App generation failed: " + error.localizedDescription }
+        } catch { self.error = "App generation failed: " + error.localizedDescription }
     }
     func generateNativeProject() async {
         let request = prompt.trimmingCharacters(in:.whitespacesAndNewlines)
@@ -71,7 +71,7 @@ import UIKit
             nativeDraftReady = true
             lines.append("AI: Generated editable native SwiftUI app source. Export project ZIP to build using a verified toolchain. No executable has been compiled.")
             error = ""
-        } catch { error = "Native project generation failed: " + error.localizedDescription }
+        } catch { self.error = "Native project generation failed: " + error.localizedDescription }
     }
     func send() async {
         let value = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
