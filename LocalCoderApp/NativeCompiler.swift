@@ -1,5 +1,6 @@
 import SwiftUI
 import ZIPFoundation
+import Darwin
 import UniformTypeIdentifiers
 
 @MainActor @Observable final class NativeProjectWorkspace {
@@ -14,12 +15,27 @@ import UniformTypeIdentifiers
     var output: URL?
     var compilerReport = "Not checked"
     func checkNativeCompiler() {
-        let roots = [Bundle.main.privateFrameworksURL, Bundle.main.sharedFrameworksURL]
-        let compiler = roots.compactMap { $0?.appendingPathComponent("CoreCompiler.framework/CoreCompiler") }
-            .contains { FileManager.default.fileExists(atPath: $0.path) }
-        let sdk = Bundle.main.url(forResource: "SDK", withExtension: nil) != nil
-        let status = compiler ? "CoreCompiler binary detected; compilation still requires ABI and smoke-test validation." : "CoreCompiler is not embedded."
-        compilerReport = status + (sdk ? " SDK resource candidate detected." : " No native SDK resource bundled.") + " Native compile unavailable until both are validated."
+        guard let base = Bundle.main.privateFrameworksURL else {
+            compilerReport = "App has no private frameworks directory."
+            return
+        }
+        let binary = base.appendingPathComponent("CoreCompiler.framework/CoreCompiler")
+        guard FileManager.default.fileExists(atPath: binary.path) else {
+            compilerReport = "CoreCompiler is not bundled."
+            return
+        }
+        guard let handle = dlopen(binary.path, RTLD_NOW | RTLD_LOCAL) else {
+            compilerReport = "CoreCompiler present but not loadable: " + String(cString: dlerror())
+            return
+        }
+        defer { dlclose(handle) }
+        let required = ["CCSwiftCompilerJobExecute", "CCCompilerJobExecute", "CCSDKCreateWithDirectoryURL"]
+        let missing = required.filter { dlsym(handle, $0) == nil }
+        if !missing.isEmpty {
+            compilerReport = "Compiler loaded but missing symbols: " + missing.joined(separator: ", ")
+        } else {
+            compilerReport = "Compiler library loaded and compiler/SDK API symbols found. Native project compilation and SDK initialization are not yet verified."
+        }
     }
     func resetTemplate() {
         switch language {
