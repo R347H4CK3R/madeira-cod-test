@@ -38,7 +38,7 @@ struct ChatAttachment: Identifiable {
             try data.write(to:tmp,options:.atomic)
             items.append(ChatAttachment(name:name,url:tmp,context:description))
             error = ""
-        } catch { error = "Attachment failed: \(error.localizedDescription)" }
+        } catch { self.error = "Attachment failed: \(error.localizedDescription)" }
     }
     func remove(_ id: UUID) {
         if let item = items.first(where:{$0.id == id}) { try? FileManager.default.removeItem(at:item.url) }
