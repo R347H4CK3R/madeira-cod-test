@@ -10,6 +10,7 @@ import UniformTypeIdentifiers
     var findings = "Import an IPA and optionally a diagnostic log. Describe what went wrong."
     var proposedFix = ""
     var sourceAvailable = false
+    var repairedIPA: URL?
     private var archiveURL: URL?
     func importFile(_ url: URL) {
         let access = url.startAccessingSecurityScopedResource()
@@ -86,6 +87,14 @@ import UniformTypeIdentifiers
         lines.append(sourceAvailable ? "Source files appear in archive, but must be matched to an editable project before recompilation." : "Compiled IPA normally contains no recoverable original Swift/Objective-C source. Automatic source patching requires the source project.")
         findings = lines.joined(separator:"\n")
     }
+    func repairSupportedIssue() {
+        guard let archiveURL else { proposedFix = "Import an IPA first."; return }
+        do {
+            let (newIPA, report) = try SafeIPARepair.repairMissingDisplayName(archiveURL)
+            repairedIPA = newIPA
+            proposedFix = report
+        } catch { proposedFix = "Automatic repair not applicable: " + error.localizedDescription + ". Native executable recompilation requires its source code and a validated compiler." }
+    }
     func createRepairPlan() {
         inspect()
         let l = (logText + " " + issue).lowercased()
@@ -100,7 +109,7 @@ import UniformTypeIdentifiers
         } else {
             proposedFix = "Insufficient evidence for a specific patch. Compare the full crash log, executable UUID/dSYM, app version and source. Do not modify the executable based on a guess."
         }
-        proposedFix += "\nAutomatic native recompilation is not enabled. No replacement IPA has been created from the imported binary."
+        proposedFix += "\nOnly validated bundle-metadata repairs can currently generate replacement IPAs. Native executable recompilation requires source and a working compiler."
     }
 }
 struct RepairView: View {
@@ -143,6 +152,10 @@ struct RepairView: View {
                     }
                     TextField("What happened?",text:$model.issue,axis:.vertical).lineLimit(2...5).textFieldStyle(.roundedBorder)
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
+                    Button("Repair missing app display name & rebuild unsigned IPA") { model.repairSupportedIssue() }.buttonStyle(.bordered)
+                    if let repaired = model.repairedIPA {
+                        ShareLink(item: repaired) { Label("Export repaired unsigned IPA",systemImage:"square.and.arrow.up") }
+                    }
                     Text("Findings").font(.headline)
                     Text(model.findings).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
                     if !model.proposedFix.isEmpty {
