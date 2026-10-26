@@ -103,6 +103,7 @@ struct MainScreen: View {
                     })
                 }
             }.tabItem { Label("Inspect", systemImage: "archivebox") }
+            RepairView().tabItem { Label("Repair", systemImage: "wrench.and.screwdriver") }
             SourceEditorView().tabItem { Label("Source", systemImage: "chevron.left.forwardslash.chevron.right") }
             NativeCompilerView().tabItem { Label("Native", systemImage: "curlybraces") }
             SDKManagementView().tabItem { Label("SDK", systemImage: "externaldrive") }
