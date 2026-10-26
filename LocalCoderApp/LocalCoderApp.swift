@@ -28,7 +28,7 @@ import UniformTypeIdentifiers
             let answer = try await session!.respond(to: value)
             lines.append("AI: " + answer.content)
             error = ""
-        } catch { error = error.localizedDescription }
+        } catch { self.error = error.localizedDescription }
     }
 }
 @MainActor @Observable final class ArchiveInspector {
