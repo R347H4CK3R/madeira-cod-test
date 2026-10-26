@@ -29,6 +29,24 @@ jobs:
         run: xcodegen generate
       - name: Compile app
         run: xcodebuild -project LocalCoder.xcodeproj -scheme LocalCoder -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Bundle Nyxian prebuilt compiler frameworks
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 -o /tmp/Nyxian.ipa https://github.com/emexlab/Nyxian/releases/download/0.11.4/Nyxian.ipa
+          mkdir -p /tmp/nyxian-release
+          unzip -q /tmp/Nyxian.ipa -d /tmp/nyxian-release
+          SOURCE=/tmp/nyxian-release/Payload/Nyxian.app
+          DEST=build/Build/Products/Release-iphoneos/LocalCoder.app
+          mkdir -p "$DEST/Frameworks" "$DEST/NyxianResources"
+          for fw in CoreCompiler MobileDevelopmentKit OpenSSL; do
+            cp -R "$SOURCE/Frameworks/$fw.framework" "$DEST/Frameworks/"
+          done
+          cp -R "$SOURCE/Shared/." "$DEST/NyxianResources/"
+          test -s "$DEST/Frameworks/CoreCompiler.framework/CoreCompiler"
+          test -s "$DEST/Frameworks/MobileDevelopmentKit.framework/MobileDevelopmentKit"
+          otool -L "$DEST/Frameworks/CoreCompiler.framework/CoreCompiler" > /tmp/compiler-dependencies.txt
+          file "$DEST/Frameworks/CoreCompiler.framework/CoreCompiler"
+          du -sh "$DEST/Frameworks" "$DEST/NyxianResources"
       - name: Package unsigned IPA
         run: |
           mkdir -p dist/Payload
