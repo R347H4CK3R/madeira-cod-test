@@ -10,7 +10,7 @@ concurrency:
 jobs:
   compiler:
     runs-on: macos-latest
-    timeout-minutes: 75
+    timeout-minutes: 150
     steps:
       - name: Checkout upstream with pinned revision
         timeout-minutes: 12
@@ -29,7 +29,7 @@ jobs:
         timeout-minutes: 12
         run: brew install ldid dpkg libarchive
       - name: Build upstream with heartbeat and bounded timeout
-        timeout-minutes: 40
+        timeout-minutes: 125
         working-directory: upstream
         run: |
           set -o pipefail
