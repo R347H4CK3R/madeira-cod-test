@@ -150,7 +150,7 @@ struct RepairView: View {
                         Text(model.proposedFix).textSelection(.enabled)
                     }
                 }.padding()
-            }.navigationTitle("Repair")
+            }.scrollDismissesKeyboard(.interactively).navigationTitle("Repair")
             .sheet(isPresented:$picker) {
                 UnrestrictedFilePicker(onPick:{ url in picker=false; model.importFile(url) },onFailure:{ msg in picker=false;model.findings=msg })
             }
