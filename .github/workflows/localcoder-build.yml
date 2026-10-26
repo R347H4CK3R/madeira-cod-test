@@ -18,6 +18,15 @@ jobs:
         run: brew install xcodegen
       - name: Generate project
         run: xcodegen generate
+      - name: Compile WebShell template
+        run: xcodebuild -project LocalCoder.xcodeproj -scheme WebShell -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath shellbuild CODE_SIGNING_ALLOWED=NO build
+      - name: Bundle executable template
+        run: |
+          mkdir -p temp/Payload
+          cp -R shellbuild/Build/Products/Release-iphoneos/WebShell.app temp/Payload/OfflineApp.app
+          cd temp && zip -q -r ../LocalCoderApp/OfflineTemplate.zip Payload
+      - name: Regenerate project with template
+        run: xcodegen generate
       - name: Compile app
         run: xcodebuild -project LocalCoder.xcodeproj -scheme LocalCoder -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
       - name: Package unsigned IPA
