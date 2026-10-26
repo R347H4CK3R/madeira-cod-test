@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
     var proposedFix = ""
     var sourceAvailable = false
     var repairedIPA: URL?
+    var reconstructed = false
     var automaticStatus = "Not run"
     var sourceDiscoveryReport = "No source search performed."
     var repositoryDiscoveryReport = "Public repository search not run."
@@ -101,8 +102,32 @@ import UniformTypeIdentifiers
         repositoryDiscoveryReport = "Searching public repositories…"
         repositoryDiscoveryReport = await SourceDiscovery.searchPublicRepositories(archiveURL)
     }
+    func reconstructApp() {
+        reconstructed = false
+        let builder = WebAppBuilder()
+        let requestedName = ipaName.replacingOccurrences(of: ".ipa", with: "", options: .caseInsensitive)
+        let cleanName = requestedName.isEmpty ? "RecoveredApp" : String(requestedName.prefix(45))
+        let escaped = issue.replacingOccurrences(of:"&",with:"&amp;").replacingOccurrences(of:"<",with:"&lt;").replacingOccurrences(of:">",with:"&gt;").replacingOccurrences(of:"\\\"",with:"&quot;")
+        builder.appName = cleanName + " Rebuild"
+        builder.bundleID = "com.localcoder.reconstructed." + UUID().uuidString.replacingOccurrences(of:"-",with:"").lowercased()
+        builder.html = """
+        <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>body{font-family:-apple-system,system-ui;background:#111827;color:#f9fafb;padding:24px}
+        .notice{background:#273449;padding:16px;border-radius:14px}button{padding:12px;border-radius:9px}</style></head>
+        <body><h1>\\(cleanName)</h1><div class="notice"><h2>Fresh replacement project</h2>
+        <p>The original executable source was not available. This is a new functioning app shell, not a recovered copy of the original app.</p>
+        <h3>Requested behavior / issue</h3><p>\\(escaped)</p>
+        <p>Unimplemented original features must be recreated from requirements or authorized source code.</p></div></body></html>
+        """
+        builder.exportIPA()
+        guard let output = builder.output else { automaticStatus = "Replacement build failed: " + builder.status; return }
+        repairedIPA = output
+        reconstructed = true
+        automaticStatus = "Created a new unsigned replacement app from the offline WebKit template. This is a fresh starter shell, not a repaired native executable. " + builder.status
+    }
     func automaticRepair() {
         repairedIPA = nil
+        reconstructed = false
         guard archiveURL != nil else {
             automaticStatus = "Import an IPA to attempt automatic repair."
             createRepairPlan()
@@ -114,8 +139,8 @@ import UniformTypeIdentifiers
             repairedIPA = result
             automaticStatus = "Validated metadata repair completed. " + message
         } catch {
-            automaticStatus = "No safe automatic patch applicable: " + error.localizedDescription
-                + ". Diagnostic recommendations are available below. Original IPA was not modified."
+            automaticStatus = "No safe native/bundle repair: " + error.localizedDescription + ". Building a separate replacement shell."
+            reconstructApp()
         }
     }
     func repairSupportedIssue() {
@@ -189,9 +214,11 @@ struct RepairView: View {
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
                     Button("Auto-diagnose, repair & export when possible") { model.automaticRepair() }.buttonStyle(.borderedProminent)
                     Text(model.automaticStatus).font(.caption).textSelection(.enabled)
+                    Button("Create new app when source is unavailable") { model.reconstructApp() }.buttonStyle(.bordered)
+                    if model.reconstructed { Text("Replacement shell only; original app functions are not automatically recovered.").font(.caption).foregroundStyle(.orange) }
                     Button("Repair missing app display name & rebuild unsigned IPA") { model.repairSupportedIssue() }.buttonStyle(.bordered)
                     if let repaired = model.repairedIPA {
-                        ShareLink(item: repaired) { Label("Export repaired unsigned IPA",systemImage:"square.and.arrow.up") }
+                        ShareLink(item: repaired) { Label(model.reconstructed ? "Export replacement starter IPA" : "Export repaired unsigned IPA",systemImage:"square.and.arrow.up") }
                     }
                     Text("Findings").font(.headline)
                     Text(model.findings).font(.system(.caption,design:.monospaced)).textSelection(.enabled)
