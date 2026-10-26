@@ -1,0 +1,38 @@
+name: Inspect prebuilt Nyxian compiler for LocalCoder integration
+on:
+  push:
+    paths:
+      - '.github/workflows/nyxian-prebuilt-inspect.yml'
+  workflow_dispatch:
+jobs:
+  inspect:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Download official Nyxian release
+        run: |
+          curl --fail --location --retry 3 -o Nyxian.ipa https://github.com/emexlab/Nyxian/releases/download/0.11.4/Nyxian.ipa
+          test -s Nyxian.ipa
+          unzip -tq Nyxian.ipa
+      - name: Identify compiler dependencies and bundled resources
+        run: |
+          mkdir -p extracted diagnostics
+          unzip -q Nyxian.ipa -d extracted
+          ROOT=extracted/Payload/Nyxian.app
+          printf 'CORE COMPILER\n' > diagnostics/dependencies.txt
+          otool -L "$ROOT/Frameworks/CoreCompiler.framework/CoreCompiler" >> diagnostics/dependencies.txt
+          printf '\nMOBILE DEVELOPMENT KIT\n' >> diagnostics/dependencies.txt
+          otool -L "$ROOT/Frameworks/MobileDevelopmentKit.framework/MobileDevelopmentKit" >> diagnostics/dependencies.txt
+          printf '\nFRAMEWORKS\n' >> diagnostics/dependencies.txt
+          find "$ROOT/Frameworks" -maxdepth 2 -type f | head -100 >> diagnostics/dependencies.txt
+          printf '\nSDK / COMPILER RESOURCE CANDIDATES\n' >> diagnostics/dependencies.txt
+          find "$ROOT" -maxdepth 6 \( -iname '*.sdk' -o -iname '*swift*' -o -iname '*clang*' \) | head -100 >> diagnostics/dependencies.txt
+          printf '\nSIZE\n' >> diagnostics/dependencies.txt
+          du -sh "$ROOT/Frameworks" "$ROOT/Shared" 2>/dev/null >> diagnostics/dependencies.txt || true
+          cat diagnostics/dependencies.txt
+      - name: Upload reusable dependency inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nyxian-prebuilt-compiler-inventory
+          path: diagnostics/dependencies.txt
+          if-no-files-found: error
