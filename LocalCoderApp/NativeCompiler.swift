@@ -14,29 +14,7 @@ import UniformTypeIdentifiers
     var status = "Native code can be edited and exported offline. LocalCoder has no embedded Swift/Clang compiler."
     var output: URL?
     var compilerReport = "Not checked"
-    func checkNativeCompiler() {
-        guard let base = Bundle.main.privateFrameworksURL else {
-            compilerReport = "App has no private frameworks directory."
-            return
-        }
-        let binary = base.appendingPathComponent("CoreCompiler.framework/CoreCompiler")
-        guard FileManager.default.fileExists(atPath: binary.path) else {
-            compilerReport = "CoreCompiler is not bundled."
-            return
-        }
-        guard let handle = dlopen(binary.path, RTLD_NOW | RTLD_LOCAL) else {
-            compilerReport = "CoreCompiler present but not loadable: " + String(cString: dlerror())
-            return
-        }
-        defer { dlclose(handle) }
-        let required = ["CCSwiftCompilerJobExecute", "CCCompilerJobExecute", "CCSDKCreateWithDirectoryURL"]
-        let missing = required.filter { dlsym(handle, $0) == nil }
-        if !missing.isEmpty {
-            compilerReport = "Compiler loaded but missing symbols: " + missing.joined(separator: ", ")
-        } else {
-            compilerReport = "Compiler library loaded and compiler/SDK API symbols found. Native project compilation and SDK initialization are not yet verified."
-        }
-    }
+    func checkNativeCompiler() { compilerReport = NyxianCompilerProbe.inspect() }
     func resetTemplate() {
         switch language {
         case .swift:
