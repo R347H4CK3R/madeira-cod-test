@@ -79,7 +79,7 @@ struct MainScreen: View {
                 VStack {
                     ScrollView { LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(brain.lines.indices, id: \.self) { index in Text(brain.lines[index]).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                    }.padding() }
+                    }.padding() }.scrollDismissesKeyboard(.interactively)
                     if !brain.error.isEmpty { Text(brain.error).foregroundStyle(.orange).font(.caption) }
                     if brain.busy { ProgressView() }
                     if !brain.attachments.items.isEmpty {
