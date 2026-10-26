@@ -14,7 +14,41 @@ import UIKit
     var error = ""
     var busy = false
     var attachments = AttachmentStore()
+    var nativeProject = NativeProjectWorkspace()
+    var nativeDraftReady = false
     private var session: LanguageModelSession?
+    func generateNativeProject() async {
+        let request = prompt.trimmingCharacters(in:.whitespacesAndNewlines)
+        guard !request.isEmpty, !busy else { error = "Describe the native iOS app first."; return }
+        guard SystemLanguageModel.default.isAvailable else { error = "On-device language model unavailable."; return }
+        busy = true
+        defer { busy = false }
+        do {
+            let session = LanguageModelSession(instructions: """
+            You write SwiftUI iOS application source code for a single Swift file.
+            Output only a complete Swift code file, with import SwiftUI and exactly one @main App entrypoint.
+            Do not write markdown fences or explanations. Avoid unimplemented placeholders.
+            Do not claim compilation, signing, installation, or device testing.
+            """)
+            let result = try await session.respond(to:request)
+            var code = result.content.trimmingCharacters(in:.whitespacesAndNewlines)
+            if code.hasPrefix("```") {
+                let lines = code.components(separatedBy:.newlines)
+                if lines.count >= 3 { code = lines.dropFirst().dropLast().joined(separator:"\n") }
+            }
+            guard code.contains("import SwiftUI"), code.contains("@main"), code.utf8.count <= 400_000 else {
+                error = "Model output was not a valid single-file SwiftUI app draft. Regenerate with more detail."
+                return
+            }
+            nativeProject.language = .swift
+            nativeProject.projectName = "AIApp"
+            nativeProject.source = code
+            nativeProject.output = nil
+            nativeDraftReady = true
+            lines.append("AI: Generated editable native SwiftUI app source. Export project ZIP to build using a verified toolchain. No executable has been compiled.")
+            error = ""
+        } catch { error = "Native project generation failed: " + error.localizedDescription }
+    }
     func send() async {
         let value = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!value.isEmpty || !attachments.items.isEmpty) && !busy else { return }
@@ -80,6 +114,18 @@ struct MainScreen: View {
                     ScrollView { LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(brain.lines.indices, id: \.self) { index in Text(brain.lines[index]).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                     }.padding() }.scrollDismissesKeyboard(.interactively)
+                    if brain.nativeDraftReady {
+                        VStack(alignment:.leading,spacing:8) {
+                            Text("Native SwiftUI project generated").font(.headline)
+                            Text("Source generated locally. A native compiler and SDK are required for an executable IPA.").font(.caption)
+                            Button("Export native project ZIP") { brain.nativeProject.exportProject() }.buttonStyle(.bordered)
+                            if let output = brain.nativeProject.output {
+                                ShareLink(item:output) { Label("Save source project",systemImage:"square.and.arrow.up") }
+                            }
+                            Text(brain.nativeProject.status).font(.caption).textSelection(.enabled)
+                            Text(brain.nativeProject.compilerReport).font(.caption).foregroundStyle(.secondary)
+                        }.padding(.horizontal)
+                    }
                     if !brain.error.isEmpty { Text(brain.error).foregroundStyle(.orange).font(.caption) }
                     if brain.busy { ProgressView() }
                     if !brain.attachments.items.isEmpty {
@@ -102,6 +148,10 @@ struct MainScreen: View {
                         } label: { Image(systemName:"plus.circle.fill").font(.title2).accessibilityLabel("Add attachment") }
                         TextField("Describe an app or paste an error", text: $brain.prompt, axis: .vertical)
                         Button("Send") { Task { await brain.send() } }.disabled(brain.busy)
+                        Menu {
+                            Button("Generate native SwiftUI source",systemImage:"curlybraces") { Task { await brain.generateNativeProject() } }
+                            Button("Check native compiler",systemImage:"checkmark.shield") { brain.nativeProject.checkNativeCompiler() }
+                        } label: { Image(systemName:"hammer.circle").font(.title2).accessibilityLabel("App build tools") }
                     }.padding()
                     .sheet(isPresented: $importChatAttachment) {
                         UnrestrictedFilePicker(onPick: { url in
