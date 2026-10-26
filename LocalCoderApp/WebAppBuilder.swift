@@ -7,6 +7,7 @@ import ZIPFoundation
     var bundleID = "com.example.offlineapp"
     var status = "This bundles HTML and JavaScript into a precompiled iOS shell. No native code compilation occurs on the phone."
     var output: URL?
+    var showingPreview = false
     func exportIPA() {
         do {
             guard let templateZip = Bundle.main.url(forResource: "OfflineTemplate", withExtension: "zip") else {
@@ -57,10 +58,12 @@ struct WebAppBuilderView: View {
                 TextEditor(text:$builder.html).font(.system(size:12,design:.monospaced)).autocorrectionDisabled().textInputAutocapitalization(.never)
                 Text(builder.status).font(.caption).foregroundStyle(.secondary)
                 HStack {
+                    Button("Run temporarily") { builder.showingPreview = true }.buttonStyle(.bordered)
                     Button("Build unsigned IPA") { builder.exportIPA() }.buttonStyle(.borderedProminent)
                     if let output=builder.output { ShareLink(item:output) { Label("Export",systemImage:"square.and.arrow.up") } }
                 }
-            }.padding().navigationTitle("App Builder")
+            }.padding().navigationTitle("PocketForge Builder")
+            .sheet(isPresented:$builder.showingPreview) { EphemeralAppPreview(html:builder.html) }
         }
     }
 }
