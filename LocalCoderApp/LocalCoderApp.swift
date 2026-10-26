@@ -93,9 +93,14 @@ struct MainScreen: View {
                         ShareLink(item: inspector.report) { Label("Share diagnosis", systemImage: "square.and.arrow.up") }
                     }.padding()
                 }.navigationTitle("IPA Inspector")
-                .fileImporter(isPresented: $importFile, allowedContentTypes: [UTType(filenameExtension: "ipa") ?? .data, .zip, .data], allowsMultipleSelection: false) { result in
-                    if case .success(let files) = result, let url = files.first { inspector.inspect(url) }
-                    if case .failure(let error) = result { inspector.report = error.localizedDescription }
+                .sheet(isPresented: $importFile) {
+                    UnrestrictedFilePicker(onPick: { url in
+                        importFile = false
+                        inspector.inspect(url)
+                    }, onFailure: { message in
+                        importFile = false
+                        inspector.report = message
+                    })
                 }
             }.tabItem { Label("Inspect", systemImage: "archivebox") }
             SourceEditorView().tabItem { Label("Source", systemImage: "chevron.left.forwardslash.chevron.right") }
