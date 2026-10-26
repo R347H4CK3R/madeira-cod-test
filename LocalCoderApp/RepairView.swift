@@ -12,6 +12,8 @@ import UniformTypeIdentifiers
     var sourceAvailable = false
     var repairedIPA: URL?
     var reconstructed = false
+    var evidenceReport: URL?
+    var evidenceStatus = "No binary analysis performed."
     var automaticStatus = "Not run"
     var sourceDiscoveryReport = "No source search performed."
     var repositoryDiscoveryReport = "Public repository search not run."
@@ -101,6 +103,13 @@ import UniformTypeIdentifiers
         guard let archiveURL else { repositoryDiscoveryReport = "Import an IPA first."; return }
         repositoryDiscoveryReport = "Searching public repositories…"
         repositoryDiscoveryReport = await SourceDiscovery.searchPublicRepositories(archiveURL)
+    }
+    func analyzeBinaryEvidence() {
+        guard let archiveURL else { evidenceStatus = "Import an IPA first."; return }
+        do {
+            evidenceReport = try BinaryReconstruction.generateReport(ipa:archiveURL)
+            evidenceStatus = "Extracted available metadata, resource inventory, and printable binary evidence. This is not original source code."
+        } catch { evidenceStatus = "Binary analysis failed: " + error.localizedDescription }
     }
     func reconstructApp() {
         reconstructed = false
@@ -214,6 +223,11 @@ struct RepairView: View {
                     Button("Analyze and recommend fix") { model.createRepairPlan() }.buttonStyle(.bordered)
                     Button("Auto-diagnose, repair & export when possible") { model.automaticRepair() }.buttonStyle(.borderedProminent)
                     Text(model.automaticStatus).font(.caption).textSelection(.enabled)
+                    Button("Analyze compiled binary evidence") { model.analyzeBinaryEvidence() }.buttonStyle(.bordered)
+                    Text(model.evidenceStatus).font(.caption).textSelection(.enabled)
+                    if let evidence = model.evidenceReport {
+                        ShareLink(item:evidence) { Label("Export reconstruction evidence",systemImage:"square.and.arrow.up") }
+                    }
                     Button("Create new app when source is unavailable") { model.reconstructApp() }.buttonStyle(.bordered)
                     if model.reconstructed { Text("Replacement shell only; original app functions are not automatically recovered.").font(.caption).foregroundStyle(.orange) }
                     Button("Repair missing app display name & rebuild unsigned IPA") { model.repairSupportedIssue() }.buttonStyle(.bordered)
