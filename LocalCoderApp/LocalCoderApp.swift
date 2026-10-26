@@ -96,7 +96,10 @@ struct MainScreen: View {
                     if case .failure(let error) = result { inspector.report = error.localizedDescription }
                 }
             }.tabItem { Label("Inspect", systemImage: "archivebox") }
-            BuildLocalView().tabItem { Label("Offline Build", systemImage: "hammer") }
+            SourceEditorView().tabItem { Label("Source", systemImage: "chevron.left.forwardslash.chevron.right") }
+            WebAppBuilderView().tabItem { Label("Create App", systemImage: "hammer") }
+            BuildLocalView().tabItem { Label("Pack IPA", systemImage: "shippingbox") }
+            FreeToolsView().tabItem { Label("Tools", systemImage: "square.grid.2x2") }
         }
     }
 }
