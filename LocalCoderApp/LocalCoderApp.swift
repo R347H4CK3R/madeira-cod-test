@@ -97,6 +97,7 @@ struct MainScreen: View {
                 }
             }.tabItem { Label("Inspect", systemImage: "archivebox") }
             SourceEditorView().tabItem { Label("Source", systemImage: "chevron.left.forwardslash.chevron.right") }
+            NativeCompilerView().tabItem { Label("Native", systemImage: "curlybraces") }
             WebAppBuilderView().tabItem { Label("Create App", systemImage: "hammer") }
             BuildLocalView().tabItem { Label("Pack IPA", systemImage: "shippingbox") }
             FreeToolsView().tabItem { Label("Tools", systemImage: "square.grid.2x2") }
