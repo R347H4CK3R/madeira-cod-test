@@ -24,3 +24,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.localcoder.unified
         CODE_SIGNING_ALLOWED: NO
+
+  WebShell:
+    type: application
+    platform: iOS
+    sources: [WebShell]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.localcoder.webshell
+        CODE_SIGNING_ALLOWED: NO
+        INFOPLIST_KEY_CFBundleDisplayName: OfflineApp
