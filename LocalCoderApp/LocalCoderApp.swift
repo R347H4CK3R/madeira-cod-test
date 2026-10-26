@@ -96,10 +96,7 @@ struct MainScreen: View {
                     if case .failure(let error) = result { inspector.report = error.localizedDescription }
                 }
             }.tabItem { Label("Inspect", systemImage: "archivebox") }
-            NavigationStack {
-                EmbeddedBrowser(url: URL(string: "https://github.com/actions")!)
-                    .navigationTitle("Cloud Builds")
-            }.tabItem { Label("Builds", systemImage: "hammer") }
+            BuildLocalView().tabItem { Label("Offline Build", systemImage: "hammer") }
         }
     }
 }
