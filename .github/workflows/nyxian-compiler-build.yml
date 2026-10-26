@@ -1,35 +1,62 @@
-name: Nyxian native compiler build verification
+name: Nyxian native compiler staged verification
 on:
   push:
     paths:
       - '.github/workflows/nyxian-compiler-build.yml'
   workflow_dispatch:
+concurrency:
+  group: nyxian-staged-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   compiler:
     runs-on: macos-latest
-    timeout-minutes: 180
+    timeout-minutes: 75
     steps:
-      - name: Fetch pinned upstream source and dependencies
+      - name: Checkout upstream with pinned revision
+        timeout-minutes: 12
         run: |
           git clone --recursive --depth 1 https://github.com/emexlab/Nyxian.git upstream
-          cd upstream
-          git rev-parse HEAD | tee ../UPSTREAM-COMMIT.txt
-          git submodule status | tee ../SUBMODULES.txt
-      - name: Install toolchain dependencies
+          git -C upstream rev-parse HEAD | tee UPSTREAM-COMMIT.txt
+          git -C upstream submodule status | tee SUBMODULES.txt
+      - name: Verify compiler and SDK source
+        timeout-minutes: 2
+        run: |
+          test -f upstream/Frameworks/CoreCompiler/Tools/Compiler/CCSwiftCompiler.cpp
+          test -f upstream/Frameworks/CoreCompiler/Tools/Compiler/CCCompiler.cpp
+          test -e upstream/LLVM-On-iOS
+          echo 'Source preflight passed'
+      - name: Install dependencies
+        timeout-minutes: 12
         run: brew install ldid dpkg libarchive
-      - name: Build upstream compiler and app
+      - name: Build upstream with heartbeat and bounded timeout
+        timeout-minutes: 40
         working-directory: upstream
-        run: CHECK_DEPS=0 make all
-      - name: Check produced IPA
+        run: |
+          set -o pipefail
+          (while true; do echo "[build heartbeat] $(date -u +%FT%TZ)"; sleep 60; done) &
+          HB=$!
+          trap 'kill "$HB" 2>/dev/null || true' EXIT
+          CHECK_DEPS=0 make all 2>&1 | tee ../NATIVE-BUILD.log
+      - name: Verify unsigned IPA and compiler payload
+        timeout-minutes: 5
         run: |
           test -s upstream/Nyxian.ipa
           unzip -t upstream/Nyxian.ipa
-          unzip -l upstream/Nyxian.ipa | grep -E '(CoreCompiler|Payload/.+\.app/)'
-      - uses: actions/upload-artifact@v4
+          unzip -l upstream/Nyxian.ipa | grep 'CoreCompiler'
+      - name: Upload logs even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: Nyxian-native-compiler-source-build
+          name: Nyxian-staged-diagnostics
           path: |
-            upstream/Nyxian.ipa
             UPSTREAM-COMMIT.txt
             SUBMODULES.txt
+            NATIVE-BUILD.log
+          if-no-files-found: warn
+      - name: Upload verified compiler IPA
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nyxian-compiler-IPA
+          path: upstream/Nyxian.ipa
           if-no-files-found: error
