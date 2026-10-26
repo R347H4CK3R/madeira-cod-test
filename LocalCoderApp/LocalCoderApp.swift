@@ -13,20 +13,23 @@ import UIKit
     var lines: [String] = []
     var error = ""
     var busy = false
+    var attachments = AttachmentStore()
     private var session: LanguageModelSession?
     func send() async {
         let value = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty && !busy else { return }
+        guard (!value.isEmpty || !attachments.items.isEmpty) && !busy else { return }
         guard SystemLanguageModel.default.isAvailable else { error = "Apple on-device model unavailable. Enable Apple Intelligence."; return }
+        let attachmentNames = attachments.items.map(\.name)
+        let attachmentContext = attachments.consumeContext()
         prompt = ""
-        lines.append("You: " + value)
+        lines.append("You: " + value + (attachmentNames.isEmpty ? "" : "\nAttachments: " + attachmentNames.joined(separator: ", ")))
         busy = true
         defer { busy = false }
         do {
             if session == nil {
                 session = LanguageModelSession(instructions: "You are an iOS programming assistant. Help diagnose Swift, Xcode, app and IPA problems. You cannot compile native Swift iOS applications directly on a normal iPhone. Archive inspection is local, but source-code changes need an actual builder. Never claim you ran tests or signed code.")
             }
-            let answer = try await session!.respond(to: value)
+            let answer = try await session!.respond(to: value + (attachmentContext.isEmpty ? "" : "\n\nAttached file context:\n" + String(attachmentContext.prefix(35000))))
             lines.append("AI: " + answer.content)
             error = ""
         } catch { self.error = error.localizedDescription }
@@ -69,6 +72,7 @@ struct MainScreen: View {
     @State private var brain = Brain()
     @State private var inspector = ArchiveInspector()
     @State private var importFile = false
+    @State private var importChatAttachment = false
     var body: some View {
         TabView {
             NavigationStack {
@@ -78,10 +82,36 @@ struct MainScreen: View {
                     }.padding() }
                     if !brain.error.isEmpty { Text(brain.error).foregroundStyle(.orange).font(.caption) }
                     if brain.busy { ProgressView() }
+                    if !brain.attachments.items.isEmpty {
+                        ScrollView(.horizontal) {
+                            HStack {
+                                ForEach(brain.attachments.items) { item in
+                                    HStack(spacing: 5) {
+                                        Image(systemName: "paperclip")
+                                        Text(item.name).lineLimit(1)
+                                        Button { brain.attachments.remove(item.id) } label: { Image(systemName: "xmark.circle.fill") }
+                                    }.font(.caption).padding(8).background(.gray.opacity(0.2)).clipShape(Capsule())
+                                }
+                            }
+                        }.padding(.horizontal)
+                    }
+                    if !brain.attachments.error.isEmpty { Text(brain.attachments.error).font(.caption).foregroundStyle(.orange) }
                     HStack {
+                        Menu {
+                            Button("Choose from Files", systemImage: "folder") { importChatAttachment = true }
+                        } label: { Image(systemName:"plus.circle.fill").font(.title2).accessibilityLabel("Add attachment") }
                         TextField("Describe an app or paste an error", text: $brain.prompt, axis: .vertical)
                         Button("Send") { Task { await brain.send() } }.disabled(brain.busy)
                     }.padding()
+                    .sheet(isPresented: $importChatAttachment) {
+                        UnrestrictedFilePicker(onPick: { url in
+                            importChatAttachment = false
+                            brain.attachments.add(url)
+                        }, onFailure: { message in
+                            importChatAttachment = false
+                            brain.attachments.error = message
+                        })
+                    }
                 }.navigationTitle("LocalCoder AI")
             }.tabItem { Label("AI Chat", systemImage: "bubble.left.and.bubble.right") }
             NavigationStack {
